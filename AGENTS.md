@@ -66,3 +66,33 @@ Small fixes (single guard, label tweak, one callback) may skip OpenSpec — use 
 <!-- openspec:begin -->
 OpenSpec is configured. Use `/opsx-propose` to start changes. Config: `openspec/config.yaml`.
 <!-- openspec:end -->
+
+## Cursor Cloud specific instructions
+
+This repo is a **spec-driven planning repository**, not a runnable app. There is no
+`shinymoon_alpha.lua` yet, no `package.json`, and no test/lint/build system. The actual
+product is a Neverlose CS:GO Lua script that only runs inside the proprietary Neverlose
+client on Windows — it **cannot run in this Linux cloud VM**. In-game validation
+(`openspec/config.yaml` validation steps) must be done by a human on a Windows CS:GO setup.
+
+The only runnable dev tool here is the **OpenSpec CLI** (`@fission-ai/openspec`), installed
+globally by the update script to `~/.npm-global/bin` (added to PATH via `~/.bashrc`). It drives
+the plan-first workflow (`/opsx-*` commands map to `openspec` subcommands).
+
+Common commands (run from repo root):
+- `openspec list` / `openspec list --specs` — list active changes / specs
+- `openspec show <name>` — render a change or spec
+- `openspec validate <change> --strict` — validate a change proposal (this is the closest
+  thing to a "test/lint" here)
+
+Non-obvious gotchas:
+- `openspec validate --specs --all --strict` **fails on the existing specs** in
+  `openspec/specs/`. This is expected: those specs use the repo's custom manual scaffold
+  (`**Requirement:**` / `**Scenario:**` bullets), not OpenSpec's official format
+  (`#### Requirement:` / `#### Scenario:` with `**WHEN**`/`**THEN**`). Do not "fix" them
+  unless asked. New **change** proposals authored in official format validate cleanly.
+- The CLI is installed with `npm install -g ... --prefix ~/.npm-global` (no global npm
+  `prefix` in `~/.npmrc`), so there is no nvm conflict. Active node is `/exec-daemon/node`.
+- The `shinymoon-alpha-tools` (PowerShell) and `open-design` (Windows GUI) MCP servers in
+  `.cursor/mcp.json` are Windows-only and will not run here. Only `sequential-thinking`
+  (npx-based) is cross-platform.
