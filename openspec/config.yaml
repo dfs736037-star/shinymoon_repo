@@ -1,0 +1,43 @@
+schema: spec-driven
+
+context: |
+  Project: shinymoon_alpha — CS:GO Neverlose Lua HVH ambient script.
+  Primary file: shinymoon_alpha.lua (single-file architecture with section buckets).
+  API source of truth: https://docs-csgo.neverlose.cc/
+  Do not edit legacy reference .lua files unless explicitly requested.
+
+  Architecture buckets:
+  - NL: Neverlose API wrapper (ui, events, render, etc.)
+  - CORE / SCRIPT: logging, accent, shared helpers
+  - UI: home, antiaim, antiaim_tab, misc menu buckets
+  - AA: anti-aim states, builder, builder_schema, defensive, protections
+  - VIS: visuals setup/state/refs/features
+  - MISC: misc features
+  - EVENTS: centralized callback registry (add, set_handler, register_all)
+  - CFG: presets / cloud config
+
+  Existing AI tooling in this repo:
+  - graphify-out/ for architecture graph (run graphify update after Lua edits)
+  - shinymoon-alpha-tools MCP for NL docs, search, memory, test logs
+  - open-design MCP for UI prototypes and DESIGN.md artifacts
+  - Skills: shinymoon-lua-workflow, shinymoon-apple-ui, shinymoon-review, shinymoon-plan
+
+  Validation: in-game Neverlose scenarios (state transitions, menu toggles, callback guards).
+  Style: ponytail — smallest correct diff; reuse existing patterns.
+
+rules:
+  proposal:
+    - State affected AA states (Global, Standing, Moving, etc.) when relevant
+    - List Neverlose callbacks touched (createmove, render, etc.)
+    - Include rollback plan (revert section / disable toggle)
+    - Identify in-game test scenario
+  specs:
+    - Use Given / When / Then for behavior scenarios
+    - Mark ADDED / MODIFIED / REMOVED for delta specs
+  design:
+    - Include a Mermaid diagram (flow or component) for multi-callback features
+    - Reference exact section names in shinymoon_alpha.lua (UI bucket, AA.builder, etc.)
+  tasks:
+    - One task = 15–40 minutes of work max
+    - Checkbox per task; group by file section
+    - Last task group must be in-game validation steps
