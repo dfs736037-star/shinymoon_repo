@@ -1,0 +1,41 @@
+---
+description: Plan-first gate — no multi-section implementation without approved OpenSpec artifacts
+alwaysApply: true
+---
+
+# Plan-first
+
+## Gate
+
+Do **not** edit `shinymoon_alpha.lua` for tasks that:
+
+- touch **3+ distinct sections** (UI, AA, VIS, MISC, EVENTS, CFG), or
+- change anti-aim/defensive architecture, or
+- add a new user-facing feature with menu + runtime logic
+
+…until the user **explicitly approves** a plan in `openspec/changes/<name>/` or `.cursor/plans/`.
+
+## Required flow (large tasks)
+
+1. `/opsx-explore` or `@shinymoon-plan` — investigate
+2. `/opsx-propose <name>` — write proposal, specs, design (with Mermaid), tasks
+3. User reviews and approves
+4. `/opsx-apply <name>` — **one task group**, then stop
+5. `shinymoon-review` before final sign-off
+6. `/opsx-archive <name>` when validated in-game
+
+## Exemptions (ponytail)
+
+- Bug fix in one callback / one control
+- Label, color, log message
+- User says "skip plan" or "just implement"
+
+## Visual plans
+
+- Put Mermaid in `design.md`
+- UI mockups: open-design MCP when layout is non-obvious
+- Architecture: graphify before refactors
+
+## Plan Mode
+
+Prefer **Plan Mode** (`Shift+Tab`) for `/opsx-propose`-scale work; save to `.cursor/plans/` and link the same `<change-name>` as OpenSpec.

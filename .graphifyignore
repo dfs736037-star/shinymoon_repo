@@ -1,0 +1,23 @@
+# Code-only graph for Neverlose Lua scripts (offline, no LLM key).
+.cursor/
+shinymoon-cloud/
+.graphifyignore
+**/*.md
+**/*.mdc
+**/*.txt
+**/*.yml
+**/*.yaml
+**/*.html
+**/*.png
+**/*.jpg
+**/*.jpeg
+**/*.webp
+**/*.gif
+**/*.svg
+**/*.json
+**/*.py
+**/*.js
+**/*.toml
+docs/
+shinymoon_icon.png
+# reference/ legacy Lua is indexed for graphify query

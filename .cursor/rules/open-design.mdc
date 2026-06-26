@@ -1,0 +1,14 @@
+---
+description: Use Open Design MCP for UI prototypes, design systems, decks, and visual artifacts.
+alwaysApply: true
+---
+
+# Open Design
+
+Use Open Design for UI/design work: prototypes, landing pages, dashboards, decks, images, and design-system artifacts.
+
+- MCP server: `open-design` (requires Open Design daemon at `http://127.0.0.1:7456`).
+- Start the app once: `%LOCALAPPDATA%\open-design\Open Design.exe`.
+- Skill entry: `.cursor/skills/open-design/SKILL.md`.
+- Bundled skills live at `%LOCALAPPDATA%\open-design\resources\open-design\skills\`.
+- For Neverlose menu polish, pair with `shinymoon-apple-ui` and pick a matching `DESIGN.md` system when relevant.

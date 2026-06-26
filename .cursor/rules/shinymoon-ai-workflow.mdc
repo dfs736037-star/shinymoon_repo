@@ -1,0 +1,24 @@
+---
+description: AI workflow, skills, and subagent guidance for shinymoon_alpha
+alwaysApply: true
+---
+
+# Shinymoon AI Workflow
+
+- **Code agent (`shinymoon-code`)**: for any implementation, bug fix, refactor, or UI task, delegate to `.cursor/agents/shinymoon-code.md` or invoke `/code <task>`. Skill `shinymoon-code-agent` auto-routes; do not ask the user which skill/MCP to use.
+- Plan-first (`plan-first` rule + `shinymoon-plan` skill + OpenSpec): for features/refactors touching 3+ sections, use `/opsx-propose` before code; implement with `/opsx-apply` one task group at a time. Specs in `openspec/specs/`; active work in `openspec/changes/`. See `AGENTS.md`.
+- Graphify (`graphify` rule + skill) is active: before exploring the codebase with Read/Grep/Glob, run `graphify query`, `graphify path`, or `graphify explain` when `graphify-out/graph.json` exists. After code edits, run `graphify update .` (or `.cursor/mcps/graphify-update.ps1`; `graphify hook install` needs a git repo).
+- Open Design (`open-design` rule + skill + MCP): start `%LOCALAPPDATA%\open-design\Open Design.exe`, then use MCP `open-design` for prototypes, DESIGN.md systems, and visual artifacts.
+- browser-harness (`browser-harness` rule + skill): use for web automation, scraping, and browser testing via CDP.
+- Ponytail (`ponytail` rule + skills) is active: prefer the smallest correct diff, reuse existing helpers, YAGNI. Say "stop ponytail" to disable. Use `ponytail-review` for over-engineering review, `ponytail-audit` for repo-wide bloat scan, `ponytail-debt` to list `ponytail:` shortcuts.
+- Use `shinymoon-lua-workflow` when editing or debugging Lua/Neverlose behavior.
+- Use `shinymoon-apple-ui` when designing menus, labels, palettes, components, or visual polish.
+- Use `shinymoon-review` before finalizing substantial Lua changes or when the user asks for review.
+- For broad codebase exploration, launch the `explore` subagent instead of manually searching everything in the parent agent.
+- For isolated experiments or alternate implementations, use a separate subagent/worktree instead of mixing attempts into the main workspace.
+- For review requests, use review posture first: findings, risks, test gaps, then summary.
+- For security-specific review requests, use the security review subagent.
+- For Bugbot-style review requests, use the Bugbot subagent.
+- Use `.cursor/subagents/shinymoon-subagent-playbook.md` for prompt templates and routing details when subagent delegation is useful.
+- Keep Neverlose API docs as the source of truth and prefer project MCP tools for docs/search/memory when available.
+- Do not modify legacy reference Lua files unless the user explicitly asks; treat them as examples for `shinymoon_alpha.lua`.

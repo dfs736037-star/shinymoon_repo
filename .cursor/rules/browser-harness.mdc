@@ -1,0 +1,13 @@
+---
+description: Use browser-harness for web automation, scraping, testing, and browser UI work.
+alwaysApply: true
+---
+
+# browser-harness
+
+Always use `browser-harness` for web interaction: automation, scraping, testing, or site/app work.
+
+- Setup or connection issues: read `.cursor/skills/browser-harness/install.md`.
+- UI mechanics (dialogs, tabs, iframes, uploads): read `.cursor/skills/browser-harness/interaction-skills/`.
+- First navigation uses `new_tab(url)`, not `goto_url(url)`.
+- If local Chrome blocks CDP: enable remote debugging at `chrome://inspect/#remote-debugging`.

@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "ollama": {
+      "command": "C:\\Windows\\System32\\cmd.exe",
+      "args": [
+        "/c",
+        "C:\\Program Files\\nodejs\\npx.cmd",
+        "-y",
+        "ollama-mcp@2.1.0"
+      ],
+      "env": {
+        "OLLAMA_HOST": "http://127.0.0.1:11434"
+      }
+    }
+  }
+}

@@ -1,0 +1,578 @@
+<!doctype html>
+<!--
+  Shinymoon watermark — visual sandbox (Neverlose CS2 style)
+  Open: file:///.../index.html  or  npx serve .cursor/design/shinymoon-watermark
+-->
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Shinymoon · Watermark Concepts · NL CS2</title>
+  <style>
+    :root {
+      --bg-scene: #0a0c10;
+      --bg-pill: rgba(21, 21, 28, 0.88);
+      --border: #2c2c35;
+      --text: #f5f5f7;
+      --muted: #a1a1aa;
+      --disabled: #5f5f6b;
+      --accent: #4a9eff;
+      --accent-2: #bf5af2;
+      --green: #30d158;
+      --mono: ui-monospace, "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      font-family: var(--sans);
+      background: #08090d;
+      color: var(--text);
+      overflow-x: hidden;
+    }
+
+    /* ── control panel (outside game mock) ── */
+    .panel {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px 16px;
+      padding: 12px 20px;
+      background: rgba(11, 11, 15, 0.94);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(16px);
+    }
+    .panel h1 {
+      font-size: 14px;
+      font-weight: 600;
+      margin: 0;
+      letter-spacing: -0.02em;
+    }
+    .panel .sub {
+      font-size: 12px;
+      color: var(--muted);
+      margin: 0;
+    }
+    .panel label {
+      font-size: 12px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+    }
+    .variants {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .variants button {
+      font: inherit;
+      font-size: 11px;
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+    }
+    .variants button.active,
+    .variants button:hover {
+      border-color: var(--accent);
+      color: var(--text);
+      background: rgba(74, 158, 255, 0.08);
+    }
+    .toggles { display: flex; gap: 14px; flex-wrap: wrap; }
+    input[type="checkbox"] { accent-color: var(--accent); }
+
+    /* ── CS2-ish game viewport ── */
+    .scene {
+      position: relative;
+      margin-top: 56px;
+      min-height: calc(100vh - 56px);
+      background:
+        radial-gradient(ellipse 80% 60% at 50% 40%, rgba(40, 55, 80, 0.35), transparent 70%),
+        linear-gradient(180deg, #121820 0%, #0a0e14 45%, #080a0f 100%);
+      overflow: hidden;
+    }
+    .scene::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 0, 0, 0.03) 2px,
+        rgba(0, 0, 0, 0.03) 4px
+      );
+      pointer-events: none;
+    }
+
+    /* HUD chrome */
+    .crosshair {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 4px; height: 4px;
+      background: rgba(255, 255, 255, 0.9);
+      border-radius: 1px;
+      box-shadow: 0 0 0 1px rgba(0,0,0,0.5);
+    }
+    .crosshair::before, .crosshair::after {
+      content: "";
+      position: absolute;
+      background: rgba(255, 255, 255, 0.75);
+    }
+    .crosshair::before { width: 1px; height: 8px; left: 1.5px; top: -10px; }
+    .crosshair::after  { width: 8px; height: 1px; left: -10px; top: 1.5px; }
+
+    .minimap {
+      position: absolute;
+      top: 16px; left: 16px;
+      width: 180px; height: 180px;
+      border: 2px solid rgba(255,255,255,0.12);
+      border-radius: 4px;
+      background: rgba(0,0,0,0.35);
+    }
+    .minimap::after {
+      content: "RADAR";
+      position: absolute;
+      bottom: 6px; right: 8px;
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--disabled);
+      letter-spacing: 0.1em;
+    }
+
+    .ammo {
+      position: absolute;
+      bottom: 48px; right: 32px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .ammo .clip {
+      font-size: 42px;
+      font-weight: 300;
+      line-height: 1;
+      letter-spacing: -0.03em;
+    }
+    .ammo .reserve {
+      font-size: 18px;
+      color: var(--muted);
+    }
+
+    .health-bar {
+      position: absolute;
+      bottom: 32px; left: 50%;
+      transform: translateX(-50%);
+      width: 220px; height: 4px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 2px;
+    }
+    .health-bar span {
+      display: block;
+      width: 78%;
+      height: 100%;
+      background: var(--green);
+      border-radius: 2px;
+    }
+
+    /* ── watermark shared ── */
+    .wm-layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    .wm {
+      position: absolute;
+      display: none;
+      align-items: center;
+      gap: 0;
+      font-size: 12px;
+      line-height: 1;
+      white-space: nowrap;
+      pointer-events: auto;
+      cursor: grab;
+      user-select: none;
+    }
+    .wm.visible { display: flex; }
+    .wm .brand {
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    .wm .brand.grad {
+      background: linear-gradient(90deg, var(--accent), var(--accent-2), var(--accent));
+      background-size: 200% 100%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      animation: grad-shift 3s ease infinite;
+    }
+    @keyframes grad-shift {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+    .wm .sep {
+      color: var(--disabled);
+      margin: 0 7px;
+      font-weight: 400;
+    }
+    .wm .stat {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .wm .stat strong { color: var(--text); font-weight: 500; }
+
+    /* A — NL Classic Pill (top-right) */
+    .wm-a {
+      top: 14px; right: 14px;
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .wm-a .pill {
+      position: relative;
+      padding: 10px 14px 9px;
+      background: var(--bg-pill);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.45);
+      overflow: hidden;
+    }
+    .wm-a .pill::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    }
+    .wm-a .row { display: flex; align-items: center; }
+
+    /* B — Glass Strip */
+    .wm-b {
+      top: 14px; right: 14px;
+    }
+    .wm-b .pill {
+      padding: 9px 14px;
+      background: rgba(21, 21, 28, 0.55);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 6px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 2px 12px rgba(0,0,0,0.35);
+    }
+
+    /* C — Accent Rail (bottom-center) */
+    .wm-c {
+      bottom: 14px; left: 50%;
+      transform: translateX(-50%);
+    }
+    .wm-c .pill {
+      display: flex;
+      align-items: stretch;
+      background: var(--bg-pill);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.45);
+      overflow: hidden;
+    }
+    .wm-c .rail {
+      width: 3px;
+      background: linear-gradient(180deg, var(--accent), var(--accent-2));
+      flex-shrink: 0;
+    }
+    .wm-c .content { padding: 10px 14px; display: flex; align-items: center; }
+
+    /* D — Minimal Text */
+    .wm-d {
+      bottom: 14px; left: 50%;
+      transform: translateX(-50%);
+      text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+    }
+    .wm-d .brand { color: var(--accent); }
+
+    /* E — Stat Chips */
+    .wm-e {
+      top: 14px; right: 14px;
+      gap: 5px;
+    }
+    .wm-e .chip {
+      padding: 6px 10px;
+      background: var(--bg-pill);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: 11px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+    }
+    .wm-e .chip.brand {
+      border-color: rgba(74, 158, 255, 0.35);
+      background: rgba(74, 158, 255, 0.1);
+    }
+    .wm-e .chip.brand .brand { color: var(--accent); }
+
+    /* F — Brand + HUD Row */
+    .wm-f {
+      bottom: 14px; left: 50%;
+      transform: translateX(-50%);
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+    .wm-f .brand-line {
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .wm-f .stats-line {
+      display: flex;
+      gap: 12px;
+      padding: 5px 12px;
+      background: var(--bg-pill);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+    }
+
+    /* spec sidebar */
+    .spec {
+      position: fixed;
+      bottom: 16px; left: 16px;
+      max-width: 340px;
+      padding: 14px 16px;
+      background: rgba(11, 11, 15, 0.92);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+      z-index: 50;
+    }
+    .spec strong { color: var(--text); display: block; margin-bottom: 4px; font-size: 13px; }
+    .spec code {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--accent);
+    }
+
+    @media (max-width: 720px) {
+      .spec { display: none; }
+      .panel { flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <header class="panel">
+    <div>
+      <h1>Shinymoon Watermark · NL CS2</h1>
+      <p class="sub">Protótipo visual — 6 variantes · arraste o widget na cena</p>
+    </div>
+    <div class="variants" id="variants">
+      <button type="button" data-v="a" class="active">A · Classic Pill</button>
+      <button type="button" data-v="b">B · Glass</button>
+      <button type="button" data-v="c">C · Accent Rail</button>
+      <button type="button" data-v="d">D · Minimal</button>
+      <button type="button" data-v="e">E · Chips</button>
+      <button type="button" data-v="f">F · Split Row</button>
+    </div>
+    <div class="toggles">
+      <label><input type="checkbox" id="grad" checked /> Text gradient</label>
+      <label><input type="checkbox" id="build" /> Show build</label>
+      <label><input type="checkbox" id="stats" checked /> Stats row</label>
+    </div>
+  </header>
+
+  <main class="scene" id="scene">
+    <div class="minimap"></div>
+    <div class="crosshair"></div>
+    <div class="ammo">
+      <div class="clip">28</div>
+      <div class="reserve">/ 90</div>
+    </div>
+    <div class="health-bar"><span></span></div>
+
+    <div class="wm-layer">
+      <!-- A -->
+      <div class="wm wm-a visible" id="wm-a" data-anchor="tr">
+        <div class="pill">
+          <div class="row">
+            <span class="brand grad">shinymoon.lua</span>
+            <span class="sep">·</span>
+            <span class="stat"><strong>yeet233</strong></span>
+            <span class="sep stats">·</span>
+            <span class="stat stats">42ms</span>
+            <span class="sep stats">·</span>
+            <span class="stat stats">240fps</span>
+            <span class="sep stats">·</span>
+            <span class="stat stats">64 tick</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- B -->
+      <div class="wm wm-b" id="wm-b" data-anchor="tr">
+        <div class="pill">
+          <span class="brand grad">shinymoon.lua</span>
+          <span class="sep">·</span>
+          <span class="stat stats">42ms · 240fps · 12:34:56</span>
+        </div>
+      </div>
+
+      <!-- C -->
+      <div class="wm wm-c" id="wm-c" data-anchor="bc">
+        <div class="pill">
+          <div class="rail"></div>
+          <div class="content">
+            <span class="brand grad">shinymoon.lua</span>
+            <span class="sep build-sep">·</span>
+            <span class="stat build-tag">alpha</span>
+            <span class="sep stats">·</span>
+            <span class="stat stats">240fps</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- D -->
+      <div class="wm wm-d" id="wm-d" data-anchor="bc">
+        <span class="brand grad">shinymoon.lua</span>
+        <span class="sep build-sep">·</span>
+        <span class="stat build-tag">alpha</span>
+      </div>
+
+      <!-- E -->
+      <div class="wm wm-e" id="wm-e" data-anchor="tr">
+        <div class="chip brand"><span class="brand grad">shinymoon</span></div>
+        <div class="chip stat stats">42ms</div>
+        <div class="chip stat stats">240fps</div>
+        <div class="chip stat stats">64t</div>
+        <div class="chip stat stats">12:34</div>
+      </div>
+
+      <!-- F -->
+      <div class="wm wm-f" id="wm-f" data-anchor="bc">
+        <div class="brand-line"><span class="brand grad">shinymoon.lua</span></div>
+        <div class="stats-line stats">
+          <span class="stat">yeet233</span>
+          <span class="stat">42ms</span>
+          <span class="stat">240fps</span>
+          <span class="stat">64 tick</span>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="spec" id="spec">
+    <strong>A · NL Classic Pill</strong>
+    Barra accent 2px no topo · fundo <code>#15151C</code> · radius 6 · top-right.<br>
+    Padrão mais comum em scripts NL (YouGame / HVH).
+  </aside>
+
+  <script>
+    const LABEL = "shinymoon.lua";
+    const BUILD = "alpha";
+    const USER = "yeet233";
+    const SPECS = {
+      a: "Barra accent 2px no topo · fundo #15151C · radius 6 · top-right.<br>Padrão mais comum em scripts NL (YouGame / HVH).",
+      b: "Glass strip · blur + borda 8% white · sem barra sólida.<br>Visual mais leve, estilo overlay moderno.",
+      c: "Accent rail 3px à esquerda · bottom-center default.<br>Combina com snap drag estilo godsense.",
+      d: "Minimal · só texto + shadow · estado atual shinymoon refinado.<br>Zero rect — menor custo render.",
+      e: "Stat chips · cápsulas separadas por métrica.<br>Legibilidade máxima em resoluções baixas.",
+      f: "Split row · brand destacado + stats em pill secundário.<br>Bom para nome longo + muitos segmentos."
+    };
+
+    let current = "a";
+    const gradCb = document.getElementById("grad");
+    const buildCb = document.getElementById("build");
+    const statsCb = document.getElementById("stats");
+    const specEl = document.getElementById("spec");
+
+    function pad(n) { return String(n).padStart(2, "0"); }
+    function clock() {
+      const d = new Date();
+      return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
+    }
+
+    function tickStats() {
+      const t = clock();
+      document.querySelectorAll(".wm-a .stat.stats").forEach((el, i) => {
+        if (i === 0) el.textContent = "42ms";
+        if (i === 1) el.textContent = "240fps";
+        if (i === 2) el.textContent = "64 tick";
+      });
+      const b = document.querySelector("#wm-b .stat.stats");
+      if (b) b.textContent = "42ms · 240fps · " + t;
+      const fStats = document.querySelector("#wm-f .stats-line");
+      if (fStats) {
+        fStats.innerHTML =
+          '<span class="stat">' + USER + '</span>' +
+          '<span class="stat">42ms</span>' +
+          '<span class="stat">240fps</span>' +
+          '<span class="stat">' + t + '</span>';
+      }
+      const eChips = document.querySelectorAll("#wm-e .chip.stat");
+      if (eChips[3]) eChips[3].textContent = t.slice(0, 5);
+    }
+    setInterval(tickStats, 1000);
+    tickStats();
+
+    function applyToggles() {
+      const useGrad = gradCb.checked;
+      document.querySelectorAll(".brand").forEach(el => {
+        el.classList.toggle("grad", useGrad);
+        if (!useGrad) el.style.color = "var(--accent)";
+        else el.style.color = "";
+      });
+      document.querySelectorAll(".build-sep, .build-tag").forEach(el => {
+        el.style.display = buildCb.checked ? "" : "none";
+      });
+      document.querySelectorAll(".stats, .stats-line").forEach(el => {
+        el.style.display = statsCb.checked ? "" : "none";
+      });
+    }
+
+    gradCb.addEventListener("change", applyToggles);
+    buildCb.addEventListener("change", applyToggles);
+    statsCb.addEventListener("change", applyToggles);
+    applyToggles();
+
+    document.getElementById("variants").addEventListener("click", e => {
+      const btn = e.target.closest("button[data-v]");
+      if (!btn) return;
+      current = btn.dataset.v;
+      document.querySelectorAll(".variants button").forEach(b => b.classList.toggle("active", b === btn));
+      document.querySelectorAll(".wm").forEach(w => w.classList.toggle("visible", w.id === "wm-" + current));
+      specEl.innerHTML = "<strong>" + btn.textContent + "</strong>" + SPECS[current];
+    });
+
+    /* drag (simula pos custom NL) */
+    document.querySelectorAll(".wm").forEach(wm => {
+      let drag = false, ox = 0, oy = 0;
+      wm.addEventListener("pointerdown", e => {
+        drag = true;
+        wm.setPointerCapture(e.pointerId);
+        const r = wm.getBoundingClientRect();
+        ox = e.clientX - r.left;
+        oy = e.clientY - r.top;
+        wm.style.cursor = "grabbing";
+      });
+      wm.addEventListener("pointermove", e => {
+        if (!drag) return;
+        const scene = document.getElementById("scene").getBoundingClientRect();
+        wm.style.left = (e.clientX - scene.left - ox) + "px";
+        wm.style.top = (e.clientY - scene.top - oy) + "px";
+        wm.style.right = "auto";
+        wm.style.bottom = "auto";
+        wm.style.transform = "none";
+      });
+      wm.addEventListener("pointerup", () => {
+        drag = false;
+        wm.style.cursor = "grab";
+      });
+    });
+  </script>
+</body>
+</html>
