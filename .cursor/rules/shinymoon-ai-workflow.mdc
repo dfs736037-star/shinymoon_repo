@@ -21,4 +21,5 @@ alwaysApply: true
 - For Bugbot-style review requests, use the Bugbot subagent.
 - Use `.cursor/subagents/shinymoon-subagent-playbook.md` for prompt templates and routing details when subagent delegation is useful.
 - Keep Neverlose API docs as the source of truth and prefer project MCP tools for docs/search/memory when available.
-- Do not modify legacy reference Lua files unless the user explicitly asks; treat them as examples for `shinymoon_alpha.lua`.
+- **Ollama local** (`ollama` MCP): use for summaries, commit messages, label drafts, and other repetitive text — not for editing `shinymoon_alpha.lua`. Setup: `.cursor/setup/install-ollama.ps1`; routing guide: `.cursor/setup/OLLAMA_INTEGRATION.md`.
+- Do not modify legacy reference Lua in `reference/legacy/` unless the user explicitly asks; treat them as examples for `shinymoon_alpha.lua`.

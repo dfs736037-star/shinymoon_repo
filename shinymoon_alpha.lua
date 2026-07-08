@@ -7,10 +7,6 @@ pcall(function()
 	end
 end)
 
-local def_voice_decoders = nil
-pcall(function()
-	def_voice_decoders = require("def_voice_decoders")
-end)
 
 local anim_layer_type = ffi.typeof([[
 	struct {
@@ -38,49 +34,18 @@ local l_md5_0 = nil
 pcall(function()
 	l_md5_0 = require("neverlose/md5")
 end)
-local _ = require("neverlose/inspect")
 
 -- ── NL API Wrapper ──
 local NL = {
 	common = {
 		get_username = common.get_username,
-		get_time = common.get_time,
-		set_clan_tag = common.set_clan_tag,
 	},
 	entity = {
 		get = entity.get,
 		get_local_player = entity.get_local_player,
 	},
-	render = {
-		measure_text = render.measure_text,
-		text = render.text,
-		rect = render.rect,
-		circle = render.circle,
-		shadow = render.shadow,
-		line = render.line,
-		screen_size = render.screen_size(),
-	},
-	math = {
-		floor = math.floor,
-		ceil = math.ceil,
-		min = math.min,
-		max = math.max,
-		abs = math.abs,
-		normalize_yaw = math.normalize_yaw,
-		lerp = function(a, b, t)
-			return a + t * (b - a)
-		end,
-	},
-	utils = {
-		random_int = utils.random_int,
-		random_float = utils.random_float,
-	},
 	globals = {
-		realtime = function() return globals.realtime end,
 		curtime = function() return globals.curtime end,
-		frametime = function() return globals.frametime end,
-		tickcount = function() return globals.tickcount end,
-		choked_commands = function() return globals.choked_commands end,
 	},
 	ui = {
 		get_alpha = ui.get_alpha,
@@ -89,15 +54,6 @@ local NL = {
 		create = ui.create,
 		find = ui.find,
 		sidebar = ui.sidebar,
-	},
-	colors = {
-		black = color(0, 0, 0, 255),
-		white = color(255, 255, 255, 255),
-	},
-	hitgroups = {
-		[0] = "generic", [1] = "head", [2] = "chest", [3] = "stomach",
-		[4] = "left arm", [5] = "right arm", [6] = "left leg", [7] = "right leg",
-		[8] = "neck", [9] = "generic", [10] = "gear",
 	},
 }
 
@@ -144,19 +100,6 @@ local function log_fail(label, reason)
 	shinymoon_log_print(string.format("\a%s%s\aDEFAULT due to \a%s%s", accent, label, accent, tostring(reason)))
 end
 
-CORE.log_action = log_action
-CORE.log_fail = log_fail
-CORE.log_print = shinymoon_log_print
-
-CORE.safecall = function(tag, fn, swallow)
-	return function(...)
-		local ok, err = pcall(fn, ...)
-		if not ok and not swallow then
-			log_fail(tag, tostring(err))
-		end
-	end
-end
-
 local THIN = "\226\128\138"
 
 local function pad(n)
@@ -195,13 +138,49 @@ local function listable_has(list, name)
 	if not list or name == nil then return false end
 	local ok, selected = pcall(function() return list:get() end)
 	if not ok or type(selected) ~= "table" then return false end
-	for _, v in pairs(selected) do
-		if v == name then return true end
+
+	local options
+	pcall(function() options = list:list() end)
+
+	local function matches(target)
+		for k, v in pairs(selected) do
+			if v == target then return true end
+			if k == target and v then return true end
+			if type(v) == "number" and options and options[v] == target then return true end
+			if type(k) == "number" and v and options and options[k] == target then return true end
+		end
+		for _, idx in ipairs(selected) do
+			if type(idx) == "number" and options and options[idx] == target then return true end
+		end
+		return false
 	end
+
+	if matches(name) then return true end
+
+	-- ponytail: gingersense selectable / old preset strings
+	local aliases = {
+		["Warmup AA"] = { "Warmup", "Warmup / Round End AA" },
+		["Round end AA"] = { "Round end", "Round End AA" },
+	}
+	local alt = aliases[name]
+	if alt then
+		for i = 1, #alt do
+			if matches(alt[i]) then return true end
+		end
+	end
+
 	return false
 end
 
 CORE.listable_has = listable_has
+
+local function weapon_is_reloading(weapon)
+	if not weapon or not weapon.get_weapon_reload then return false end
+	local ok, reload = pcall(function() return weapon:get_weapon_reload() end)
+	return ok and reload ~= nil and reload ~= -1
+end
+
+CORE.weapon_is_reloading = weapon_is_reloading
 
 -- ── Bucket Tables ──
 local UI = { home = {}, antiaim = {}, antiaim_tab = {}, misc = {} }
@@ -578,10 +557,17 @@ setup.fs_prefer = fs_grp:switch("Prefer manual AA", false)
 
 setup.avoid_knife = antiaim.setup:switch(icon_label("shield", "Avoid Backstab", 1, 5))
 
-setup.break_lc = antiaim.setup_r:switch(icon_label("triangle-exclamation", "Break LC", 1, 5))
-local blc_grp = setup.break_lc:create()
-setup.break_lc_conditions = blc_grp:listable("Conditions", { "Weapon switch", "Weapon reload", "Always" })
-setup.break_lc_no_quickpeek = blc_grp:switch("Don't override LC on Quickpeek", false)
+setup.lc_defense = antiaim.setup_r:switch(icon_label("shield-halved", "LC & Defensive", 1, 5), false)
+local lc_def_grp = setup.lc_defense:create()
+setup.break_lc_conditions = lc_def_grp:listable("LC Events", { "Weapon switch", "Weapon reload", "Always" })
+setup.break_lc_targets = lc_def_grp:listable("LC Targets", { "Hide Shots Break LC", "DT Lag Always on" })
+setup.break_lc_no_quickpeek = lc_def_grp:switch("Don't override LC on Quickpeek", false)
+setup.def_conditions = lc_def_grp:selectable("DTC Active States", setup_states)
+setup.def_disablers = lc_def_grp:selectable("DTC Disablers", { "Freestanding", "Manual AA", "Peek Assist" })
+setup.def_improve_fakelag = lc_def_grp:switch("Improve Fakelag on Defensive", false)
+-- ponytail: alias until runtime group drops legacy master names (unify-lc-defensive-ui §2)
+setup.break_lc = setup.lc_defense
+setup.def_gating = setup.lc_defense
 
 setup.safe_head = antiaim.setup_r:switch(icon_label("brake-warning", "Hide Head", 1, 5))
 local sh_grp = setup.safe_head:create()
@@ -600,8 +586,9 @@ setup.pitch_on_land = an_grp:switch(icon_label("person-arrow-down-to-line", "Pit
 
 setup.trollaa = antiaim.setup_r:switch(icon_label("poop", "Troll AA", 1, 5))
 local ta_grp = setup.trollaa:create()
-setup.ta_options = ta_grp:listable("Enable on", { "Warmup", "Round End"})
-setup.ta_speed = ta_grp:slider("Speed", 0, 22, 0, 1, "t")
+setup.ta_options = ta_grp:listable("Enable on", { "Warmup AA", "Round end AA" })
+setup.ta_mode = ta_grp:combo("Troll AA", { "Spin", "Half Spin" })
+setup.ta_speed = ta_grp:slider("Speed", 1, 10, 0, 1, function(v) return v .. "t" end)
 
 local SETUP_VISIBILITY = {
 	{
@@ -640,27 +627,36 @@ setup.ta_options:set_callback(function()
 			end
 		end
 	end
+	setup.ta_mode:visibility(any_selected)
 	setup.ta_speed:visibility(any_selected)
 end, true)
 
-local function update_break_lc_visibility()
-	local enabled = setup.break_lc:get()
-	blc_grp:visibility(enabled)
+local function update_lc_defense_visibility()
+	local enabled = setup.lc_defense:get()
+	lc_def_grp:visibility(enabled)
+	setup.break_lc_conditions:visibility(enabled)
+	setup.break_lc_targets:visibility(enabled)
 	setup.break_lc_no_quickpeek:visibility(enabled and listable_has(setup.break_lc_conditions, "Always"))
+	setup.def_conditions:visibility(enabled)
+	setup.def_disablers:visibility(enabled)
+	setup.def_improve_fakelag:visibility(enabled)
 end
 
-setup.break_lc:set_callback(update_break_lc_visibility, true)
-setup.break_lc_conditions:set_callback(update_break_lc_visibility, true)
+setup.lc_defense:set_callback(update_lc_defense_visibility, true)
+setup.break_lc_conditions:set_callback(update_lc_defense_visibility, true)
+setup.break_lc_targets:set_callback(update_lc_defense_visibility, true)
+update_lc_defense_visibility()
 
 
 -- builder elements
 AA.builder_schema = {
 	base_keys = {
 		"yaw_mode", "yaw_random_methods", "yaw_left", "yaw_right", "yaw_randomize",
+		"frequency", "amplitude", "r_min", "r_max", "scale",
 		"antibrute", "antibrute_method", "duration",
 		"jitter", "center_options", "yaw_jitter_ovr", "jitter_randomize",
 		"center_min", "center_max", "custom_amount",
-		"body_yaw", "fake_options", "speed_options", "delay_speed",
+		"body_yaw", "fake_options", "speed_options", "delay_speed", "amnesia_tick_speed",
 		"custom_speed", "custom_speed_method", "custom_speed_amount",
 		"ran_speed_1", "ran_speed_2", "slider_random",
 		"fake_left", "fake_right", "fake_left_random", "fake_right_random",
@@ -699,7 +695,7 @@ local function create_yaw_elements(group, suffix)
 
 builder["yaw_random_methods" .. key] = yaw_parent:create():combo(
 	icon_label("dice", "Random" .. "\n" .. suffix, 1, 5),
-	{ "Default" }
+	{ "Default", "Sinusoidal", "Chaotic" }
 )
 
 for _, dir in ipairs({"left", "right" }) do
@@ -712,6 +708,22 @@ for _, dir in ipairs({"left", "right" }) do
 	-- Randomize
 	builder["yaw_randomize" .. key] = yaw_parent:create():slider(
 		"Randomize\n" .. suffix, 0, 100, 0, 1, "%"
+	)
+
+	builder["frequency" .. key] = yaw_parent:create():slider(
+		"Frequency\n" .. suffix, 0, 60, 8, 1
+	)
+	builder["amplitude" .. key] = yaw_parent:create():slider(
+		"Amplitude\n" .. suffix, 0, 30, 15, 1, "\194\176"
+	)
+	builder["r_min" .. key] = yaw_parent:create():slider(
+		"Min\n" .. suffix, 0, 100, 0, 1
+	)
+	builder["r_max" .. key] = yaw_parent:create():slider(
+		"Max\n" .. suffix, 0, 100, 100, 1
+	)
+	builder["scale" .. key] = yaw_parent:create():slider(
+		"Scale\n" .. suffix, 0, 100, 10, 1
 	)
 
 	-- Anti-bruteforce
@@ -741,12 +753,18 @@ for _, dir in ipairs({"left", "right" }) do
 		local show_manual = is_yaw_on and not is_automatic
 		local enabled = builder["antibrute" .. key]:get()
 		local dur = builder["duration" .. key]:get()
+		local rand_method = builder["yaw_random_methods" .. key]:get()
 		
 		builder["yaw_random_methods" .. key]:visibility(show_manual)
 		for _, dir in ipairs({"left", "right" }) do
 			builder["yaw_" .. dir .. key]:visibility(show_manual)
 		end
-		builder["yaw_randomize" .. key]:visibility(show_manual)
+		builder["yaw_randomize" .. key]:visibility(show_manual and rand_method == "Default")
+		builder["frequency" .. key]:visibility(show_manual and rand_method == "Sinusoidal")
+		builder["amplitude" .. key]:visibility(show_manual and rand_method == "Sinusoidal")
+		builder["r_min" .. key]:visibility(show_manual and rand_method == "Chaotic")
+		builder["r_max" .. key]:visibility(show_manual and rand_method == "Chaotic")
+		builder["scale" .. key]:visibility(show_manual and rand_method == "Chaotic")
 		builder["antibrute" .. key]:visibility(is_yaw_on)
 		
 		builder["antibrute_method" .. key]:visibility(is_yaw_on and enabled)
@@ -755,6 +773,7 @@ for _, dir in ipairs({"left", "right" }) do
 	end
 
 	builder["yaw_mode" .. key]:set_callback(update_yaw_visibility, true)
+	builder["yaw_random_methods" .. key]:set_callback(update_yaw_visibility, true)
 	builder["antibrute" .. key]:set_callback(update_yaw_visibility, true)
 	builder["duration" .. key]:set_callback(update_yaw_visibility, true)
 
@@ -858,7 +877,12 @@ local function create_body_elements(group, suffix)
 	-- Speed method
 	builder["speed_options" .. key] = fake_parent:create():combo(
 		icon_label("list-radio", "Method" .. "\n" .. suffix, 1, 5),
-		{ "Default", "Shiny"}
+		{ "Default", "Shiny", "Amnesia" }
+	)
+
+	builder["amnesia_tick_speed" .. key] = fake_parent:create():slider(
+		icon_label("brain", "Amnesia Tick\n" .. suffix, 1, 5),
+		1, 22, 16, 1
 	)
 
 	-- Delay speed (Master Speed for Jitter)
@@ -933,6 +957,9 @@ local function create_body_elements(group, suffix)
 		builder["speed_options" .. key]:visibility(is_jitter)
 		builder["delay_speed" .. key]:visibility(is_jitter)
 		builder["custom_speed" .. key]:visibility(is_jitter)
+
+		local speed_opt = builder["speed_options" .. key]:get()
+		builder["amnesia_tick_speed" .. key]:visibility(is_jitter and speed_opt == "Amnesia")
 		
 		local custom_speed_enabled = builder["custom_speed" .. key]:get()
 		local csm = builder["custom_speed_method" .. key]:get()
@@ -957,6 +984,7 @@ local function create_body_elements(group, suffix)
 
 	builder["body_yaw" .. key]:set_callback(update_body_visibility, true)
 	builder["fake_options" .. key]:set_callback(update_body_visibility, true)
+	builder["speed_options" .. key]:set_callback(update_body_visibility, true)
 	builder["custom_speed" .. key]:set_callback(update_body_visibility, true)
 	builder["custom_speed_method" .. key]:set_callback(update_body_visibility, true)
 	builder["custom_speed_amount" .. key]:set_callback(update_body_visibility, true)
@@ -1670,7 +1698,7 @@ local function init_cfg()
 		antiaim_update_visibility()
 		home_update_visibility()
 		misc_update_visibility()
-		pcall(update_break_lc_visibility)
+		pcall(update_lc_defense_visibility)
 	end
 
 local function cfg_persist_store(store)
@@ -2576,7 +2604,6 @@ local def_on_voice_message
 local shared_on_voice_message
 local shared_sync_icons
 local shared_shutdown_icons
-local update_defensive_ticks
 local def_calc_choke_target
 local def_should_fire
 local def_apply_force_defensive
@@ -2619,6 +2646,7 @@ refs.freestand = {
 }
 refs.def = NL.ui.find("Aimbot", "Ragebot", "Main", "Double Tap", "Lag Options")
 refs.dt_fakelag = NL.ui.find("Aimbot", "Ragebot", "Main", "Double Tap", "Fake Lag Limit")
+refs.hideshot_config = NL.ui.find("Aimbot", "Ragebot", "Main", "Hide Shots", "Options")
 refs.slow = NL.ui.find("Aimbot", "Anti Aim", "Misc", "Slow Walk")
 refs.hidden = NL.ui.find("Aimbot", "Anti Aim", "Angles", "Yaw", "Hidden")
 refs.fakelag = NL.ui.find("Aimbot", "Anti Aim", "Fake Lag", "Limit")
@@ -2654,24 +2682,52 @@ get_fakelag_limit = function()
 	return DEFENSIVE_DEFAULT_FAKELAG
 end
 
+local function lc_break_lc_enabled()
+	return setup.break_lc and setup.break_lc:get()
+end
+
+local function lc_event_conditions_active(me)
+	if not lc_break_lc_enabled() or not me or not me:is_alive() then
+		return false
+	end
+
+	local weapon = me:get_player_weapon(false)
+	if listable_has(setup.break_lc_conditions, "Weapon switch")
+		and (me.m_flNextAttack or 0) > (globals.curtime or 0) then
+		return true
+	end
+	if listable_has(setup.break_lc_conditions, "Weapon reload") and weapon_is_reloading(weapon) then
+		return true
+	end
+	if listable_has(setup.break_lc_conditions, "Always") then
+		local block_quickpeek = setup.break_lc_no_quickpeek and setup.break_lc_no_quickpeek:get()
+		local quickpeek_active = refs.autopeek and refs.autopeek:get()
+		if not (block_quickpeek and quickpeek_active) then
+			return true
+		end
+	end
+	return false
+end
+
 is_antibrute_enabled_for_config = function(config)
 	return type(config) == "table" and config["antibrute"] == true
 end
 
 local function get_active_antibrute_entry()
 	local ab = aa_engine and aa_engine.ab
-	if not ab or type(ab.should_swap) ~= "table" then return nil end
+	if not ab or type(ab.time) ~= "table" then return nil end
 	local now = globals.curtime or 0
-	for enemy, active in pairs(ab.should_swap) do
-		if active and (ab.time[enemy] or 0) - now >= 0 then
+	for enemy, expire in pairs(ab.time) do
+		if type(expire) == "number" and expire - now >= 0 then
 			return enemy, {
 				jitteralgo = ab.jitteralgo[enemy] or 0,
 				delay = ab.delay[enemy] or 0,
 				fakelimit = ab.fakelimit[enemy] or 0,
-				time = ab.time[enemy] or 0,
+				time = expire,
 				duration = ab.duration[enemy] or 0,
+				needs_swap = ab.should_swap[enemy] == true,
 			}
-		elseif (ab.time[enemy] or 0) > 0 and (ab.time[enemy] or 0) - now < 0 then
+		elseif type(expire) == "number" and expire > 0 and expire - now < 0 then
 			ab.should_swap[enemy] = nil
 			ab.time[enemy] = nil
 			ab.jitteralgo[enemy] = nil
@@ -2681,6 +2737,17 @@ local function get_active_antibrute_entry()
 		end
 	end
 	return nil
+end
+
+local function aa_consume_antibrute_swap(enemy, entry)
+	if not enemy or not entry or not entry.needs_swap then
+		return
+	end
+	aa_engine.allow_inverter = not aa_engine.allow_inverter
+	local ab = aa_engine.ab
+	if ab and ab.should_swap then
+		ab.should_swap[enemy] = false
+	end
 end
 
 aa_engine = {
@@ -2716,6 +2783,14 @@ aa_engine = {
 	switch_delay = 0,
 	custom_speed_index = 0,
 	delay_custom_target = 0,
+	last_aa_state = nil,
+	debug_active_state = nil,
+	debug_effective_speed = 0,
+	debug_config_delay = 0,
+	debug_speed_options = "Default",
+	debug_antibrute_active = false,
+	amnesia_tick = 0,
+	amnesia_on = true,
 	hold_last_offset = 0,
 	mod_last_sent_offset = 0,
 	last_exploit_active = nil,
@@ -2765,11 +2840,15 @@ aa_engine = {
 		air_ticks = 0,
 		dtc_air_phase = "ground",
 		window_start = false,
+		window_fire_armed = false,
+		pending_fire_check = false,
 		fire_reason = "idle",
 		skip_reason = "none",
 		early_bias = 0,
 		profile_bias = 0,
 		last_scan_tick = -1,
+		last_force_defensive = false,
+		gating_blocked = false,
 	},
 	shiny = {
 		pressure = 0,
@@ -2805,6 +2884,8 @@ AA.round_reset = {
 		{ field = "def_last_sample_tick", value = -1 },
 		"def_last_sampled_base",
 		"switch_delay", "delay_custom_target", "hold_last_offset",
+		{ field = "amnesia_tick", value = 0 },
+		{ field = "amnesia_on", value = true },
 		"mod_last_sent_offset", "lby_timer", "lby_flick_tick",
 	},
 	def = {
@@ -2818,8 +2899,12 @@ AA.round_reset = {
 		"air_ticks",
 		{ field = "dtc_air_phase", value = "ground" },
 		{ field = "window_start", value = false },
+		{ field = "window_fire_armed", value = false },
+		{ field = "pending_fire_check", value = false },
 		{ field = "fire_reason", value = "idle" },
 		{ field = "skip_reason", value = "none" },
+		{ field = "last_force_defensive", value = false },
+		{ field = "gating_blocked", value = false },
 		"early_bias", "profile_bias",
 		{ field = "last_scan_tick", value = -1 },
 	},
@@ -2912,7 +2997,18 @@ local function aa_should_advance_side(config, speed)
 	if interaction ~= "net_update" then
 		return true
 	end
-	return (globals.choked_commands or 0) ~= math.random(0, 1)
+	return (aa_engine.sent_tick_counter or 0) % 2 == 0
+end
+
+local function aa_reset_delay_state()
+	aa_engine.switch_delay = 0
+	aa_engine.delay_custom_target = 0
+	aa_engine.custom_speed_index = 0
+	local shiny = aa_engine.shiny
+	if shiny then
+		shiny.delay_cycle = 0
+		shiny.delay_target = 0
+	end
 end
 
 local function aa_advance_custom_modifier(config, tick)
@@ -3382,6 +3478,31 @@ local function compute_automatic_yaw(config, inverter_on)
 	return offset
 end
 
+local function apply_yaw_randomization(base_yaw, config)
+	local method = config["yaw_random_methods"] or "Default"
+	if method == "Sinusoidal" then
+		local freq = config["frequency"] or 8
+		local amp = config["amplitude"] or 15
+		return base_yaw + math.sin(globals.curtime * freq) * amp
+	end
+	if method == "Chaotic" then
+		local r_min = config["r_min"] or 0
+		local r_max = config["r_max"] or 100
+		if r_min > r_max then r_min, r_max = r_max, r_min end
+		local scale = config["scale"] or 10
+		local t = globals.curtime * scale
+		return base_yaw + math.random(r_min, r_max) * math.sin(t) * math.cos(t * 2) * math.sin(t * 0.5)
+	end
+
+	local randomize = config["yaw_randomize"] or 0
+	if randomize > 0 then
+		local rand_range = math.abs(base_yaw) * (randomize / 100)
+		local rand_offset = (math.random() * 2 - 1) * rand_range
+		return base_yaw + rand_offset
+	end
+	return base_yaw
+end
+
 -- Yaw Calculation
 local function calculate_yaw(config, tick)
 	local yaw_mode = config["yaw_mode"] or "Off"
@@ -3398,12 +3519,8 @@ local function calculate_yaw(config, tick)
 		-- Fallback for static or other modes if necessary
 		base_yaw = config["yaw_left"] or 0
 	end
-	-- Apply randomization
-	local randomize = config["yaw_randomize"] or 0
-	if yaw_mode ~= "Automatic" and randomize > 0 then
-		local rand_range = math.abs(base_yaw) * (randomize / 100)
-		local rand_offset = (math.random() * 2 - 1) * rand_range
-		base_yaw = base_yaw + rand_offset
+	if yaw_mode ~= "Automatic" then
+		base_yaw = apply_yaw_randomization(base_yaw, config)
 	end
 	return normalize_yaw(base_yaw)
 end
@@ -3532,16 +3649,15 @@ local function apply_modifier(config, base_yaw, tick)
 			modifier_offset = config["custom_slider_" .. idx] or 0
 		end
 	elseif mode == "Shiny" then
-		local shiny = aa_engine.shiny
-		local sent_tick = (globals.choked_commands or 0) == 0
-
-		if sent_tick then
-			shiny.mod_sent_counter = (shiny.mod_sent_counter or 0) + 1
+		if aa_sent_tick() then
+			aa_engine.shiny.mod_sent_counter = (aa_engine.shiny.mod_sent_counter or 0) + 1
+			modifier_offset = calc_shiny_modifier_offset(
+				config, amount, min_val, max_val, tick, is_inverter, center_opt, randomize
+			)
+			aa_engine.mod_last_sent_offset = modifier_offset
+		else
+			modifier_offset = aa_engine.mod_last_sent_offset or 0
 		end
-
-		modifier_offset = calc_shiny_modifier_offset(
-			config, amount, min_val, max_val, tick, is_inverter, center_opt, randomize
-		)
 	elseif mode == "Hold" then
 		if not aa_sent_tick() then
 			modifier_offset = aa_engine.hold_last_offset or 0
@@ -4143,8 +4259,6 @@ shiny_build_modifier_context = function(me, config, tick, amount, is_inverter, m
 		defensive = (aa_engine.defensive_ticks or 0) > 0,
 		since_hurt = curtime - (shiny.last_hurt or 0),
 		since_miss = curtime - (shiny.last_near_miss or 0),
-		lby_due = shiny_vec_len2d(vel) < 1.0 and bit.band(me.m_fFlags or 0, FL_ONGROUND) ~= 0
-			and (sim_time - (aa_engine.lby_timer or 0)) >= 0.22,
 		lby_flick_window = (sim_time - (aa_engine.lby_flick_tick or 0)) < 0.15,
 		amp = amp,
 		amp_scale = 1,
@@ -4210,14 +4324,16 @@ shiny_modifier_event_layer = function(ctx)
 	if config["antibrute"] and antibrute_entry then
 		local brute_amp = amp * (1 + math.abs(antibrute_entry.jitteralgo or 0) * 0.07)
 		if sent then
-			return brute_amp * (tick % 2 == 0 and 1 or -1), "antibrute"
+			local sign = (shiny.mod_sent_counter or 0) % 2 == 0 and 1 or -1
+			return brute_amp * sign, "antibrute"
 		end
 		return math.sin(tick * phi) * brute_amp * 0.35, "antibrute_choke"
 	end
 
 	if ctx.defensive then
 		if sent then
-			return (tick % 2 == 0) and amp * 0.9 or -amp * 0.9, "defensive"
+			local sign = shiny_direction_sign(ctx, true)
+			return amp * 0.9 * sign, "defensive"
 		end
 		return math.sin(tick * 2.8) * amp * 0.3, "defensive_choke"
 	end
@@ -4620,18 +4736,21 @@ local function apply_yaw_and_desync(config, tick)
 
 	sync_desync_on_exploit_change()
 
+	local _, ab_preview = get_active_antibrute_entry()
+	aa_engine.debug_antibrute_active = ab_preview ~= nil
+
 	-- 2. Determine Jitter Inverter (allow_inverter)
 	local fake_left = config["fake_left"] or 60
 	local fake_right = config["fake_right"] or 60
 	
 	if fake_opt == "Jitter" then
-		local speed = math.max(1, math.floor(config["delay_speed"] or 3))
+		local speed = math.max(1, math.floor(config["delay_speed"] or 2))
 		local shiny = aa_engine.shiny
 		local use_shiny_delay = config["speed_options"] == "Shiny" and me
 		
-		local _, antibrute_entry = get_active_antibrute_entry()
+		local ab_enemy, antibrute_entry = get_active_antibrute_entry()
 		if sent_tick and config["antibrute"] and antibrute_entry then
-			aa_engine.allow_inverter = not aa_engine.allow_inverter
+			aa_consume_antibrute_swap(ab_enemy, antibrute_entry)
 			if table_selection_has(config["antibrute_method"], "Delay") then
 				speed = math.max(1, speed + antibrute_entry.delay)
 			end
@@ -4648,7 +4767,7 @@ local function apply_yaw_and_desync(config, tick)
 				speed = shiny.delay_target or speed
 				if speed < 1 then
 					speed = shiny_refresh_delay_target(
-						config, me, tick, math.max(1, math.floor(config["delay_speed"] or 3))
+						config, me, tick, math.max(1, math.floor(config["delay_speed"] or 2))
 					)
 				end
 			end
@@ -4665,9 +4784,12 @@ local function apply_yaw_and_desync(config, tick)
 			elseif csm == "Custom" then
 				local amount = config["custom_speed_amount"] or 1
 				local idx = (aa_engine.custom_speed_index or 0) % amount + 1
-				speed = config["custom_speed_slider_" .. idx] or speed
+				speed = math.max(1, math.floor(config["custom_speed_slider_" .. idx] or speed))
 			end
 		end
+
+		aa_engine.debug_config_delay = math.max(1, math.floor(config["delay_speed"] or 2))
+		aa_engine.debug_effective_speed = speed
 		
 		local allow_tick = aa_should_advance_side(config, speed)
 
@@ -4702,9 +4824,9 @@ local function apply_yaw_and_desync(config, tick)
 	end
 	
 	if fake_opt == "Static" or fake_opt == "Random" then
-		local _, antibrute_entry = get_active_antibrute_entry()
+		local ab_enemy, antibrute_entry = get_active_antibrute_entry()
 		if sent_tick and config["antibrute"] and antibrute_entry then
-			aa_engine.allow_inverter = not aa_engine.allow_inverter
+			aa_consume_antibrute_swap(ab_enemy, antibrute_entry)
 			if table_selection_has(config["antibrute_method"], "Fake limit") then
 				fake_left = antibrute_entry.fakelimit
 				fake_right = antibrute_entry.fakelimit
@@ -4718,7 +4840,23 @@ local function apply_yaw_and_desync(config, tick)
 		if refs.body_yaw[1] then refs.body_yaw[1]:override(false) end
 		if refs.body_yaw[2] then refs.body_yaw[2]:override(false) end
 	else
-		if refs.body_yaw[1] then refs.body_yaw[1]:override(true) end
+		local amnesia = config["speed_options"] == "Amnesia" and fake_opt == "Jitter"
+		if amnesia and sent_tick then
+			aa_engine.amnesia_tick = (aa_engine.amnesia_tick or 0) + 1
+			local limit = math.max(1, math.floor(config["amnesia_tick_speed"] or 16))
+			if aa_engine.amnesia_tick > limit then
+				aa_engine.amnesia_tick = 0
+				aa_engine.amnesia_on = not (aa_engine.amnesia_on ~= false)
+			end
+		end
+
+		if refs.body_yaw[1] then
+			if amnesia then
+				refs.body_yaw[1]:override(aa_engine.amnesia_on ~= false)
+			else
+				refs.body_yaw[1]:override(true)
+			end
+		end
 		if refs.body_yaw[2] then refs.body_yaw[2]:override(false) end
 
 		local rand_l = config["fake_left_random"] or 0
@@ -4767,6 +4905,19 @@ local DTC_STAND_EARLY_BIAS = 2
 local DTC_MOVE_EARLY_BIAS = 2
 local DTC_FALL_EARLY_BIAS = 3
 local DTC_RISE_EARLY_BIAS = 1
+local DTC_AIR_CROUCH_BIAS = 3
+
+local function def_at_send_tick()
+	return (globals.choked_commands or 0) == 0
+end
+
+-- ponytail: DTC logs only when AA debug panel is on
+local function def_log_dtc(fmt, ...)
+	if not setup.aa_debug or not setup.aa_debug:get() then
+		return
+	end
+	print(string.format("[shinymoon] DTC " .. fmt, ...))
+end
 
 local function def_dtc_air_phase_from_z(z_vel)
 	if z_vel > DTC_AIR_APEX_Z_VEL then
@@ -4781,6 +4932,557 @@ local function def_dtc_air_phase(me)
 	local vel = me and me.m_vecVelocity
 	return def_dtc_air_phase_from_z(vel and vel.z or 0)
 end
+
+
+local def_voice_decoders = (function()
+
+local M = {}
+
+local DEF_PKT_T = ffi.typeof([[
+	struct {
+		uint32_t xuid_low;
+		uint32_t xuid_high;
+		uint32_t sequence_bytes;
+		uint32_t section_number;
+		uint32_t uncompressed_sample_offset;
+	}
+]])
+
+local DEF_PRIM_PTR = ffi.typeof([[
+	struct {
+		char pad[8];
+		uint8_t keyp1;
+		uint8_t eidp1;
+		uint8_t mutualkey;
+		uint8_t loc_xor_key;
+		uint16_t xored_x;
+		uint16_t xored_y;
+		uint16_t xored_z;
+		uint8_t keyp2;
+	} *
+]])
+
+local COORD_INT_BITS = 14
+local COORD_FRAC_BITS = 5
+
+local DEF_AIRFLOW_TAGS = {
+	[250] = "airflow",
+	[153] = "airflow",
+	[175] = "airflow",
+	[102] = "airflow",
+	[180] = "airflow",
+	[187] = "airflow",
+	[220] = "airflow",
+	[186] = "airflow",
+}
+
+local GS_SBOX = {
+	94,4,184,28,143,210,241,56,207,171,136,61,194,59,115,88,65,204,6,249,32,68,121,77,172,47,202,150,217,237,34,247,
+	44,244,67,147,13,208,70,45,141,42,180,225,12,53,89,16,114,18,236,165,79,188,174,58,71,102,205,40,160,104,154,181,
+	92,99,246,183,36,43,195,51,90,81,76,140,49,212,177,159,122,86,235,82,112,253,2,135,84,151,232,83,10,96,120,29,
+	145,179,134,191,98,189,201,199,7,46,80,106,105,62,190,162,166,22,119,26,196,238,87,175,146,164,176,113,9,173,152,41,
+	206,25,224,54,198,220,230,107,211,223,148,95,131,21,52,234,153,33,221,192,19,11,254,111,66,155,75,50,64,219,222,109,
+	14,27,124,85,255,91,158,39,57,103,138,5,73,193,37,30,31,116,228,8,216,110,127,203,245,242,137,250,38,17,72,169,
+	125,167,200,142,243,23,35,93,128,197,48,74,130,1,240,251,182,144,185,108,209,163,0,15,20,215,161,129,170,63,132,60,
+	252,126,239,229,187,139,213,186,218,156,149,231,69,157,55,24,101,100,214,117,178,226,133,233,248,78,118,123,168,3,97,227,
+}
+
+local function to_uint32(val)
+	val = tonumber(val) or 0
+	if val < 0 then
+		val = val + 4294967296
+	end
+	return bit.band(val, 0xFFFFFFFF)
+end
+
+local function to_int32(val)
+	val = tonumber(val) or 0
+	if val > 2147483647 then
+		val = val - 4294967296
+	end
+	return val
+end
+
+local function split_xuid(xuid)
+	xuid = to_uint32(xuid)
+	return bit.band(xuid, 0xFFFFFFFF), bit.band(bit.rshift(xuid, 32), 0xFFFFFFFF)
+end
+
+local function signed16(bits)
+	if bits > 32767 then
+		return bits - 65536
+	end
+	return bits
+end
+
+local function rol(val, n)
+	n = n % 32
+	val = bit.band(val, 0xFFFFFFFF)
+	return bit.band(bit.bor(bit.lshift(val, n), bit.rshift(val, 32 - n)), 0xFFFFFFFF)
+end
+
+local function gs_ror16(val, n)
+	val = bit.band(val, 65535)
+	return bit.band(bit.bor(bit.rshift(val, n), bit.lshift(val, 16 - n)), 65535)
+end
+
+local function gs_mix(a, b)
+	a = bit.band(a, 65535)
+	a = bit.bor(a, bit.lshift(a, 16))
+	return bit.band(gs_ror16(a, b), 65535)
+end
+
+local function gs_hi16(val)
+	return bit.band(bit.rshift(val, 16), 65535)
+end
+
+local function enemy_client_id(enemy)
+	local idx = enemy:get_index()
+	if not idx or idx <= 0 then
+		return 0
+	end
+	return idx - 1
+end
+
+local function validate_origin(enemy, x, y, z)
+	if not enemy or not enemy:is_alive() then
+		return false
+	end
+	local origin = enemy:get_origin()
+	if not origin then
+		return false
+	end
+	return math.abs(origin.x - x) <= 256
+		and math.abs(origin.y - y) <= 256
+		and math.abs(origin.z - z) <= 256
+end
+
+function M.build_meta(ctx)
+	local low, high = split_xuid(ctx.xuid)
+	local pkt = ffi.new(DEF_PKT_T)
+	pkt.xuid_low = low
+	pkt.xuid_high = high
+	pkt.sequence_bytes = ctx.sequence_bytes or 0
+	pkt.section_number = ctx.section_number or 0
+	pkt.uncompressed_sample_offset = ctx.uncompressed_sample_offset or 0
+	return pkt
+end
+
+function M.meta_bytes(pkt)
+	local raw = ffi.cast("uint8_t*", pkt)
+	local bytes = {}
+	for i = 0, 19 do
+		bytes[i + 1] = raw[i]
+	end
+	return bytes
+end
+
+function M.bf_new(bytes)
+	local bf = {
+		data = {},
+		pos = 0,
+		bit_pos = 0,
+		size = #bytes,
+	}
+
+	for i = 1, #bytes do
+		bf.data[i - 1] = bit.band(bytes[i], 255)
+	end
+
+	function bf:read_bits(num_bits)
+		local value = 0
+		local left = num_bits
+		while left > 0 do
+			if self.bit_pos == 8 then
+				self.bit_pos = 0
+				self.pos = self.pos + 1
+			end
+			local byte = self.data[self.pos] or 0
+			local take = math.min(left, 8 - self.bit_pos)
+			local mask = bit.lshift(1, take) - 1
+			value = bit.bor(value, bit.lshift(bit.band(bit.rshift(byte, self.bit_pos), mask), num_bits - left))
+			left = left - take
+			self.bit_pos = self.bit_pos + take
+		end
+		return value
+	end
+
+	function bf:read_coord()
+		local has_int = self:read_bits(1)
+		local has_frac = self:read_bits(1)
+		if has_int == 0 and has_frac == 0 then
+			return 0
+		end
+		local negative = self:read_bits(1)
+		local int_part = 0
+		local frac_part = 0
+		if has_int == 1 then
+			int_part = self:read_bits(COORD_INT_BITS) + 1
+		end
+		if has_frac == 1 then
+			frac_part = self:read_bits(COORD_FRAC_BITS)
+		end
+		local coord = int_part + frac_part * 0.03125
+		if negative == 1 then
+			coord = -coord
+		end
+		return coord
+	end
+
+	function bf:reset()
+		self.pos = 0
+		self.bit_pos = 0
+	end
+
+	return bf
+end
+
+function M.decode_primordial(pkt, enemy, format)
+	if (format or 0) ~= 1 then
+		return nil
+	end
+
+	local prim = ffi.cast(DEF_PRIM_PTR, pkt)[0]
+	local entity_id = bit.bxor(prim.eidp1, prim.mutualkey)
+	local idx = enemy:get_index()
+	if not idx or entity_id ~= idx then
+		return nil
+	end
+
+	local function xor_float(bits, key)
+		local buf = ffi.new("int16_t[1]")
+		buf[0] = bit.bxor(bits, key)
+		return tonumber(ffi.cast("float", buf[0]))
+	end
+
+	local x = xor_float(prim.xored_x, prim.loc_xor_key)
+	local y = xor_float(prim.xored_y, prim.loc_xor_key)
+	local z = xor_float(prim.xored_z, prim.loc_xor_key)
+	local key = bit.bxor(prim.keyp1, prim.keyp2) - prim.mutualkey
+
+	if key ~= 77 and key ~= 67 then
+		return nil
+	end
+	if x <= -16384 or x >= 16384 or y <= -16384 or y >= 16384 or z <= -16384 or z >= 16384 then
+		return nil
+	end
+	if not validate_origin(enemy, x, y, z) then
+		return nil
+	end
+
+	return "primordial", 0.9
+end
+
+function M.decode_ev0lity(pkt, enemy)
+	local idx = enemy:get_index()
+	if not idx or idx <= 0 then
+		return nil
+	end
+
+	local low, high = pkt.xuid_low, pkt.xuid_high
+	if low == 0 then
+		return nil
+	end
+	local seed = bit.band(bit.bxor(bit.bxor(high, idx) % low, 0xFFFFFFFF), 0xFFFFFFFF)
+	seed = bit.bor(seed, bit.band(bit.bxor(high, low), 65535))
+
+	local raw = ffi.cast("uint8_t*", pkt)
+	local bytes = {}
+	for i = 0, 19 do
+		bytes[i + 1] = raw[i]
+	end
+
+	local key = {
+		bit.band(seed, 255),
+		bit.band(bit.rshift(seed, 8), 255),
+		bit.band(bit.rshift(seed, 16), 255),
+		bit.band(bit.rshift(seed, 24), 255),
+	}
+
+	for i = 1, #bytes do
+		bytes[i] = bit.band(bit.bxor(bytes[i], key[(i - 1) % 4 + 1]), 255)
+		if (i - 1) % 4 == 3 then
+			seed = bit.bor(bit.lshift(seed, 8), bit.band(i - 1, 255))
+			key = {
+				bit.band(seed, 255),
+				bit.band(bit.rshift(seed, 8), 255),
+				bit.band(bit.rshift(seed, 16), 255),
+				bit.band(bit.rshift(seed, 24), 255),
+			}
+		end
+	end
+
+	local bf = M.bf_new(bytes)
+	local packet_id = bf:read_bits(16)
+	local entity_id = bf:read_bits(8)
+	bf:read_bits(8)
+	local x = signed16(bf:read_bits(16))
+	local y = signed16(bf:read_bits(16))
+	local z = signed16(bf:read_bits(16))
+	bf:read_bits(16)
+
+	if packet_id ~= 32762 and packet_id ~= 32763 and packet_id ~= 32764 and packet_id ~= 32765 then
+		return nil
+	end
+	if entity_id ~= idx then
+		return nil
+	end
+	if not validate_origin(enemy, x, y, z) then
+		return nil
+	end
+
+	if packet_id == 32762 or packet_id == 32763 then
+		return "fatality", 0.9
+	end
+	return "exploit", 0.85
+end
+
+function M.decode_airflow(pkt, enemy)
+	if (pkt.section_number or 0) == 0
+		or (pkt.sequence_bytes or 0) == 0
+		or (pkt.uncompressed_sample_offset or 0) == 0 then
+		return nil
+	end
+
+	local buf = ffi.new("uint8_t[24]")
+	local words = ffi.cast("uint32_t*", buf)
+	words[0] = pkt.xuid_low
+	words[1] = pkt.xuid_high
+	words[2] = pkt.sequence_bytes
+	words[3] = pkt.section_number
+	words[4] = pkt.uncompressed_sample_offset
+
+	local bytes = {}
+	for i = 0, 19 do
+		bytes[i + 1] = buf[i]
+	end
+
+	local bf = M.bf_new(bytes)
+	local header = bf:read_bits(8)
+	local cheat_id = bf:read_bits(8)
+	local magic = bf:read_bits(16)
+	local entity_id = bf:read_bits(8)
+
+	local function float16(bits)
+		if bits <= 32767 then
+			return bits
+		end
+		return bits - 65536
+	end
+
+	local x = float16(bf:read_bits(16))
+	local y = float16(bf:read_bits(16))
+	local z = float16(bf:read_bits(16))
+	bf:read_bits(8)
+	local tick_count = bf:read_bits(32)
+
+	if magic ~= 57005 or header ~= 241 then
+		return nil
+	end
+	if not DEF_AIRFLOW_TAGS[cheat_id] then
+		return nil
+	end
+	if entity_id ~= enemy:get_index() then
+		return nil
+	end
+	if not validate_origin(enemy, x, y, z) then
+		return nil
+	end
+
+	local tick = bit.band(globals.tickcount or 0, 65535)
+	if math.abs(tick - tick_count) > 32 then
+		return nil
+	end
+
+	return "airflow", 0.9
+end
+
+function M.decode_rifk7(pkt, enemy)
+	local idx = enemy:get_index()
+	if not idx or idx <= 0 then
+		return nil
+	end
+
+	local xuid_low = to_int32(pkt.xuid_low)
+	local v2370 = xuid_low + 28
+	local v2371 = xuid_low + 31
+	if v2370 >= 0 then
+		v2371 = v2370
+	end
+	local v2372 = bit.rshift(v2371, 2) - idx - idx + 54
+	local v2373 = bit.bor(v2372, 64)
+	if v2373 == 124 or v2373 == 252 then
+		return "exploit", 0.82
+	end
+	return nil
+end
+
+function M.decode_nixware(pkt, enemy)
+	local bf = M.bf_new(M.meta_bytes(pkt))
+	local id = bf:read_bits(16)
+	local entity_id = bf:read_bits(7) + 1
+	local x = bf:read_coord()
+	local y = bf:read_coord()
+	local z = bf:read_coord()
+	local tick_count = bf:read_bits(32)
+
+	if id ~= 48879 and id ~= 53456 then
+		return nil
+	end
+	if x <= -16384 or x >= 16384 or y <= -16384 or y >= 16384 or z <= -16384 or z >= 16384 then
+		return nil
+	end
+	if entity_id ~= enemy:get_index() then
+		return nil
+	end
+	if not validate_origin(enemy, x, y, z) then
+		return nil
+	end
+
+	local tick = globals.tickcount or 0
+	if math.abs(tick - tick_count) > 32 then
+		return nil
+	end
+
+	return "exploit", 0.85
+end
+
+function M.decode_gamesense(pkt, enemy)
+	local idx = enemy:get_index()
+	if not idx or idx <= 0 then
+		return nil
+	end
+
+	local buf = ffi.new("uint8_t[24]")
+	local words = ffi.cast("uint32_t*", buf)
+	local shorts = ffi.cast("uint16_t*", buf)
+	words[0] = pkt.xuid_low
+	words[1] = pkt.xuid_high
+	words[2] = pkt.section_number
+	words[3] = pkt.sequence_bytes
+	words[4] = pkt.uncompressed_sample_offset
+
+	local sbox = {}
+	for i = 0, 255 do
+		sbox[i] = GS_SBOX[i + 1]
+	end
+
+	local j = 7
+	for i = 0, 20 do
+		local tmp = sbox[i + 129]
+		local swap_idx = bit.band(j + tmp, 255)
+		sbox[i + 129] = sbox[swap_idx]
+		sbox[swap_idx] = tmp
+		j = bit.band(j + tmp, 255)
+		buf[i] = bit.bxor(buf[i], sbox[bit.band(tmp + sbox[i + 129], 255)])
+	end
+
+	local a, b, c = 0, 0, 0
+	for round = 0, 4 do
+		local idx2 = 2 * round + 1
+		local w0 = shorts[idx2]
+		local w1 = shorts[idx2 + 1]
+		local state = 2446691973
+		local x, y = w0, w1
+		for _ = 1, 15 do
+			local r1 = rol(state, 1)
+			local m1 = gs_mix(y - state, bit.band(x, 15))
+			state = rol(state, 2)
+			y = bit.band(bit.bxor(x, m1), 65535)
+			local m2 = bit.band(bit.bxor(y, gs_mix(x - r1, bit.band(y, 15))), 65535)
+			x = bit.band(m2, 65535)
+		end
+		shorts[idx2] = bit.bxor(a, x - rol(state, 1))
+		shorts[idx2 + 1] = bit.band(bit.bxor(b, y - state), 65535)
+		a, b = w0, w1
+	end
+
+	local user_id = enemy_client_id(enemy)
+	words[1] = bit.bxor(words[1], user_id)
+	words[2] = bit.bxor(words[2], idx)
+
+	if bit.bxor(gs_hi16(pkt.xuid_low), gs_hi16(words[0])) ~= 9252 then
+		return nil
+	end
+
+	local bytes = {}
+	for i = 0, 20 do
+		bytes[i + 1] = buf[i]
+	end
+
+	local bf = M.bf_new(bytes)
+	bf:read_bits(32)
+	local tick_field = bf:read_bits(32)
+	local entity_id = bf:read_bits(7) + 1
+	bf:read_bits(9)
+	local x = bf:read_coord()
+	local y = bf:read_coord()
+	local z = bf:read_coord()
+
+	if x <= -16384 or x >= 16384 or y <= -16384 or y >= 16384 or z <= -16384 or z >= 16384 then
+		return nil
+	end
+	if entity_id ~= idx then
+		return nil
+	end
+	if not validate_origin(enemy, x, y, z) then
+		return nil
+	end
+
+	local tick = globals.tickcount or 0
+	if math.abs(tick - tick_field) > 32 then
+		return nil
+	end
+
+	return "gamesense", 0.9
+end
+
+function M.detect(ctx, enemy)
+	if not ctx or not enemy or not enemy:is_alive() or not enemy:is_enemy() or enemy:is_dormant() then
+		return nil
+	end
+
+	local pkt = M.build_meta(ctx)
+
+	local prim_tag, prim_conf = M.decode_primordial(pkt, enemy, ctx.format)
+	if prim_tag then
+		return prim_tag, prim_conf
+	end
+
+	local gs_tag, gs_conf = M.decode_gamesense(pkt, enemy)
+	if gs_tag then
+		return gs_tag, gs_conf
+	end
+
+	local evo_tag, evo_conf = M.decode_ev0lity(pkt, enemy)
+	if evo_tag then
+		return evo_tag, evo_conf
+	end
+
+	local rifk_tag, rifk_conf = M.decode_rifk7(pkt, enemy)
+	if rifk_tag then
+		return rifk_tag, rifk_conf
+	end
+
+	local af_tag, af_conf = M.decode_airflow(pkt, enemy)
+	if af_tag then
+		return af_tag, af_conf
+	end
+
+	local nx_tag, nx_conf = M.decode_nixware(pkt, enemy)
+	if nx_tag then
+		return nx_tag, nx_conf
+	end
+
+	if ctx.is_nl == true then
+		return "neverlose", 0.92
+	end
+
+	return nil
+end
+
+return M
+end)()
 
 -- ── AA.def ── defensive profiles / DTC
 local function def_get_profile(idx)
@@ -5035,10 +5737,7 @@ def_on_voice_message = function(ctx)
 		return
 	end
 
-	local tag, conf = nil, nil
-	if def_voice_decoders then
-		tag, conf = def_voice_decoders.detect(ctx, enemy)
-	end
+	local tag, conf = def_voice_decoders.detect(ctx, enemy)
 	if not tag then
 		return
 	end
@@ -5075,6 +5774,7 @@ local function defensive_sample_tickbase(me)
 		aa_engine.def_max_tickbase = tickbase
 		aa_engine.defensive_ticks = 0
 		aa_engine.max_defensive_ticks = 0
+		aa_engine.def.window_fire_armed = false
 		return
 	end
 
@@ -5082,6 +5782,7 @@ local function defensive_sample_tickbase(me)
 		aa_engine.def_max_tickbase = tickbase
 		aa_engine.defensive_ticks = 0
 		aa_engine.max_defensive_ticks = 0
+		aa_engine.def.window_fire_armed = false
 	elseif tracked > tickbase then
 		local remaining = math.min(DEFENSIVE_MAX_TICKS, math.max(0, tracked - tickbase - 1))
 		if remaining > 0 then
@@ -5091,26 +5792,19 @@ local function defensive_sample_tickbase(me)
 			if remaining > (aa_engine.max_defensive_ticks or 0) then
 				aa_engine.max_defensive_ticks = remaining
 				aa_engine.def.last_shift_tick = tick
+				aa_engine.def.window_fire_armed = true
 			end
 			aa_engine.defensive_ticks = remaining
 		else
 			aa_engine.defensive_ticks = 0
 			aa_engine.max_defensive_ticks = 0
+			aa_engine.def.window_fire_armed = false
 		end
 	else
 		aa_engine.defensive_ticks = 0
 		aa_engine.max_defensive_ticks = 0
+		aa_engine.def.window_fire_armed = false
 	end
-end
-
-update_defensive_ticks = function(me)
-	local tick = globals.tickcount or 0
-	if tick == aa_engine.def_last_sample_tick then
-		return
-	end
-	aa_engine.def_last_sample_tick = tick
-	aa_engine.def_last_sample_source = "createmove"
-	defensive_sample_tickbase(me)
 end
 
 local DEF_PROFILE_TAGS_EXPLOIT = {
@@ -5153,9 +5847,13 @@ local function def_calc_early_bias(me)
 	local air_phase = on_ground and nil or def_dtc_air_phase_from_z(z_vel)
 	aa_engine.def.dtc_air_phase = air_phase or "ground"
 
+	local duck = me.m_flDuckAmount or 0
+	local crouched = duck > 0.5
 	local bias
 	if on_ground and speed < 50 then
 		bias = DTC_STAND_EARLY_BIAS
+	elseif not on_ground and crouched and (air_phase == "apex" or (aa_engine.def.air_ticks or 0) < DTC_AIR_MIN_TICKS) then
+		bias = DTC_AIR_CROUCH_BIAS
 	elseif not on_ground and ((aa_engine.def.air_ticks or 0) < DTC_AIR_MIN_TICKS or air_phase == "rising") then
 		bias = DTC_RISE_EARLY_BIAS
 	elseif air_phase == "falling" then
@@ -5226,18 +5924,20 @@ def_should_fire = function(me, tick, config)
 		return false, nil
 	end
 
-	local choke = globals.choked_commands or 0
+	if not def_at_send_tick() then
+		return skip("not_send_tick")
+	end
+
 	local prev_choke = aa_engine.def.fire_prev_choke or 0
 	local fire_choke = aa_engine.def.last_fire_choke or 0
 	-- Fire on the send tick after the choke target was reached, not while still
 	-- building choke (records showed choke=12/12 fails; choke=0 send ticks succeed).
-	local at_fire_point = choke == 0 and prev_choke >= fire_choke
-	local at_send = choke == 0
+	local at_fire_point = prev_choke >= fire_choke
 
 	local defensive_ticks = aa_engine.defensive_ticks or 0
 	local max_defensive_ticks = aa_engine.max_defensive_ticks or 0
 	local window_start = defensive_ticks > 0 and defensive_ticks == max_defensive_ticks
-	local in_window = defensive_ticks > 0
+	local def = aa_engine.def
 
 	if tick <= (aa_engine.last_defensive_fire_tick or -1) then
 		return skip("same_tick")
@@ -5250,28 +5950,14 @@ def_should_fire = function(me, tick, config)
 		return skip("sim_cooldown")
 	end
 
-	if window_start then
-		aa_engine.def.skip_reason = "none"
+	if window_start and def.window_fire_armed and at_fire_point then
+		def.window_fire_armed = false
+		def.skip_reason = "none"
 		return true, "window_start"
 	end
 
-	local pressure = aa_engine.shiny.pressure or 0
-	local sustain_ok = pressure >= 35 or defensive_ticks >= 2 or is_exploit_active()
-
-	if in_window and at_send then
-		if at_fire_point then
-			aa_engine.def.skip_reason = "none"
-			return true, "choke_boundary"
-		end
-		if sustain_ok then
-			aa_engine.def.skip_reason = "none"
-			return true, "window_sustain"
-		end
-		return skip("low_pressure")
-	end
-
 	if at_fire_point then
-		aa_engine.def.skip_reason = "none"
+		def.skip_reason = "none"
 		return true, "choke_boundary"
 	end
 
@@ -5281,6 +5967,120 @@ end
 local function shiny_safe_exploit_call(fn)
 	if not rage or not rage.exploit or not fn then return end
 	pcall(fn, rage.exploit)
+end
+
+local function def_gating_enabled()
+	return setup.def_gating and setup.def_gating:get()
+end
+
+local function def_state_allowed(state_name)
+	if not def_gating_enabled() then return true end
+	local conditions = setup.def_conditions:get()
+	if type(conditions) ~= "table" then return true end
+	local any = false
+	for _, st in pairs(conditions) do
+		any = true
+		if st == state_name then return true end
+	end
+	return not any
+end
+
+local function def_disabler_blocks(fs_active, manual_active, peek_active)
+	if not def_gating_enabled() then return false end
+	local disablers = setup.def_disablers:get()
+	if type(disablers) ~= "table" then return false end
+	for _, name in pairs(disablers) do
+		if name == "Freestanding" and fs_active then return true end
+		if name == "Manual AA" and manual_active then return true end
+		if name == "Peek Assist" and peek_active then return true end
+	end
+	return false
+end
+
+local function lc_fs_active(state_name)
+	if not setup.freestanding or not setup.freestanding:get() then
+		return false
+	end
+
+	local fs_active = true
+	local disablers = setup.fs_disablers:get()
+	if type(disablers) == "table" then
+		for _, d in pairs(disablers) do
+			if d == state_name then
+				fs_active = false
+				break
+			end
+		end
+	end
+
+	if fs_active and setup.fs_prefer and setup.fs_prefer:get() and setup.manual:get() ~= "Off" then
+		fs_active = false
+	end
+	return fs_active
+end
+
+local function lc_hs_target_enabled()
+	if not setup.break_lc_targets then return true end
+	local hs = listable_has(setup.break_lc_targets, "Hide Shots Break LC")
+	local dt = listable_has(setup.break_lc_targets, "DT Lag Always on")
+	-- ponytail: empty target list keeps legacy HS-only until user picks targets
+	if not hs and not dt then return true end
+	return hs
+end
+
+local function lc_dt_target_enabled()
+	return setup.break_lc_targets and listable_has(setup.break_lc_targets, "DT Lag Always on")
+end
+
+local function lc_dt_target_allowed(me, state_name)
+	local config = resolve_state_config(state_name)
+	if not config or not config["defensive_tickbase"] then
+		return false
+	end
+	if not def_state_allowed(state_name) then
+		return false
+	end
+	local peek_active = refs.autopeek and refs.autopeek:get()
+	return not def_disabler_blocks(
+		lc_fs_active(state_name),
+		setup.manual:get() ~= "Off",
+		peek_active
+	)
+end
+
+local function lc_apply_break_lc_overrides(me)
+	if not lc_break_lc_enabled() or not me or not me:is_alive() then
+		if refs.hideshot_config then refs.hideshot_config:override() end
+		return
+	end
+
+	local conditions_active = lc_event_conditions_active(me)
+	local state_name = detect_player_state(me, last_cmd)
+
+	if conditions_active and lc_hs_target_enabled() and refs.hideshot_config then
+		refs.hideshot_config:override("Break LC")
+	elseif refs.hideshot_config then
+		refs.hideshot_config:override()
+	end
+
+	if conditions_active and lc_dt_target_enabled()
+		and lc_dt_target_allowed(me, state_name) and refs.def then
+		refs.def:override("Always on")
+	end
+end
+
+local function apply_defensive_runtime_overrides(config)
+	if not def_gating_enabled() then return end
+
+	local def_active = config["defensive_tickbase"] and (aa_engine.defensive_ticks or 0) >= 1
+
+	if setup.def_improve_fakelag and setup.def_improve_fakelag:get() and refs.fakelag then
+		if def_active then
+			refs.fakelag:override(1)
+		else
+			refs.fakelag:override()
+		end
+	end
 end
 
 -- Single authority that writes cmd.force_defensive.
@@ -5307,25 +6107,58 @@ def_apply_force_defensive = function(cmd, tick, config)
 		return
 	end
 
+	if not def_state_allowed(aa_engine.def_active_state) then
+		cmd.force_defensive = false
+		shiny_safe_exploit_call(function(ex) ex:allow_defensive(false) end)
+		aa_engine.def.fire_reason = "idle"
+		aa_engine.def.skip_reason = "state_gate"
+		return
+	end
+
+	if aa_engine.def.gating_blocked then
+		cmd.force_defensive = false
+		shiny_safe_exploit_call(function(ex) ex:allow_defensive(false) end)
+		aa_engine.def.fire_reason = "idle"
+		aa_engine.def.skip_reason = "disabler"
+		return
+	end
+
 	shiny_safe_exploit_call(function(ex) ex:allow_defensive(true) end)
 
 	local fire, reason = def_should_fire(me, tick, config)
+	local def = aa_engine.def
+	local state_name = aa_engine.def_active_state or "?"
 	if fire then
 		cmd.force_defensive = true
 		aa_engine.last_defensive_fire_tick = tick
 		aa_engine.last_defensive_sim = me.m_flSimulationTime or globals.curtime
-		aa_engine.def.fire_reason = reason
-		aa_engine.def.skip_reason = "none"
+		def.fire_reason = reason
+		def.skip_reason = "none"
+		def.pending_fire_check = true
+		if not def.last_force_defensive then
+			def_log_dtc(
+				"fire armed [%s] tick=%d choke=%d target=%d shift=%d reason=%s",
+				state_name,
+				tick,
+				globals.choked_commands or 0,
+				def.last_choke_target or 0,
+				aa_engine.defensive_ticks or 0,
+				reason or "?"
+			)
+		end
+		def.last_force_defensive = true
 		return
 	end
 
 	cmd.force_defensive = false
-	aa_engine.def.fire_reason = "idle"
+	def.fire_reason = "idle"
+	def.last_force_defensive = false
 end
 
 -- Advances the defensive measurement clock for this tick without writing force_defensive.
-def_update_state = function(config, tick, cmd)
+def_update_state = function(config, tick, cmd, state_name)
 	aa_engine.def_active_config = config
+	aa_engine.def_active_state = state_name or "?"
 
 	if not config["defensive_tickbase"] then
 		return
@@ -5339,7 +6172,9 @@ def_update_state = function(config, tick, cmd)
 		aa_engine.def.last_scan_tick = tick
 	end
 
-	update_defensive_ticks(me)
+	aa_engine.def_last_sample_source = "createmove"
+	aa_engine.def_last_sample_tick = tick
+	defensive_sample_tickbase(me)
 
 	local choke = globals.choked_commands or 0
 	aa_engine.def.fire_prev_choke = aa_engine.def.prev_choke or 0
@@ -5358,6 +6193,21 @@ def_update_state = function(config, tick, cmd)
 	end
 
 	def_calc_choke_target(me, config)
+
+	local def = aa_engine.def
+	if def.pending_fire_check and def_at_send_tick() then
+		local shift = aa_engine.defensive_ticks or 0
+		local ok = shift > 0
+		def_log_dtc(
+			"sample [%s] %s | shift=%d choke=%d/%d",
+			state_name or "?",
+			ok and "ok" or "fail",
+			shift,
+			choke,
+			def.last_choke_target or 0
+		)
+		def.pending_fire_check = false
+	end
 end
 
 -- ── Setup AA helpers (manual / hide head / backstab) ───────────────
@@ -5450,10 +6300,10 @@ local function should_troll_aa()
 
 	local round_end = aa_engine.round_ended and not entity.get_threat(true)
 
-	if warmup and ta_option_enabled("Warmup") then
+	if warmup and ta_option_enabled("Warmup AA") then
 		return true
 	end
-	if round_end and ta_option_enabled("Round End") then
+	if round_end and ta_option_enabled("Round end AA") then
 		return true
 	end
 	return false
@@ -5461,32 +6311,23 @@ end
 
 local function calc_troll_aa_offset(tick)
 	local speed = setup.ta_speed and setup.ta_speed:get() or 0
-	if speed <= 0 then
-		return tick * 25 % 360
-	end
-	if speed <= 11 then
+	if setup.ta_mode and setup.ta_mode:get() == "Half Spin" then
 		return math.sin(tick * (speed / 10)) * 135
 	end
-	return tick * (2 ^ (speed - 11)) % 360
+	return tick * 2 ^ speed % 360
 end
 
 local function apply_troll_aa_mode(config, tick)
-	if refs.freestand and refs.freestand[1] then refs.freestand[1]:override(false) end
-	if refs.base then refs.base:override("local view") end
 	if refs.pitch then refs.pitch:override("Disabled") end
-	if refs.jitter then refs.jitter:override("Offset") end
-	if refs.jitter_val then refs.jitter_val:override(0) end
-	if refs.hidden then refs.hidden:override(false) end
-	if rage and rage.antiaim then
-		rage.antiaim:override_hidden_yaw_offset(0)
-		rage.antiaim:override_hidden_pitch(0)
-	end
-	if refs.body_yaw[1] then refs.body_yaw[1]:override(false) end
-	if refs.body_yaw[2] then refs.body_yaw[2]:override(false) end
-	if refs.body_yaw[6] then refs.body_yaw[6]:override("Off") end
 
 	local offset = calc_troll_aa_offset(tick)
 	if refs.offset then refs.offset:override(offset) end
+	if refs.body_yaw[3] then refs.body_yaw[3]:override(0) end
+	if refs.body_yaw[4] then refs.body_yaw[4]:override(0) end
+	if refs.body_yaw[1] then refs.body_yaw[1]:override(false) end
+	if refs.body_yaw[2] then refs.body_yaw[2]:override(false) end
+	if refs.jitter then refs.jitter:override("Offset") end
+	if refs.jitter_val then refs.jitter_val:override(0) end
 	aa_engine.last_yaw = offset
 end
 
@@ -5497,11 +6338,6 @@ local function apply_hide_head_mode(config, tick)
 	if refs.offset then refs.offset:override(30) end
 	if refs.jitter then refs.jitter:override("Disabled") end
 	if refs.jitter_val then refs.jitter_val:override(0) end
-	if refs.hidden then refs.hidden:override(false) end
-	if rage and rage.antiaim then
-		rage.antiaim:override_hidden_yaw_offset(0)
-		rage.antiaim:override_hidden_pitch(0)
-	end
 
 	if refs.body_yaw[1] then refs.body_yaw[1]:override(true) end
 	if refs.body_yaw[2] then refs.body_yaw[2]:override(false) end
@@ -5675,8 +6511,17 @@ aa_engine_run = function()
 	local tick = globals.tickcount
 	local me = entity.get_local_player()
 	local state_name = detect_player_state(me, last_cmd)
+	local fs_active = false
+
+	if state_name ~= aa_engine.last_aa_state then
+		aa_reset_delay_state()
+		aa_engine.last_aa_state = state_name
+	end
+	aa_engine.debug_active_state = state_name
 
 	local config = resolve_state_config(state_name)
+	aa_engine.debug_speed_options = config["speed_options"] or "Default"
+	aa_engine.debug_config_delay = math.max(1, math.floor(config["delay_speed"] or 2))
 	local commit_config = config
 
 	if me and me:is_alive() and shiny_uses_pressure(config) then
@@ -5692,7 +6537,7 @@ aa_engine_run = function()
 		end
 	end
 
-	def_update_state(config, tick, last_cmd)
+	def_update_state(config, tick, last_cmd, state_name)
 
 	if is_mouse_yaw_active() then
 		reset_head_burger_state()
@@ -5711,7 +6556,7 @@ aa_engine_run = function()
 		apply_setup_yaw_base()
 		if refs.body_yaw[6] then refs.body_yaw[6]:override() end
 
-		local fs_active = false
+		fs_active = false
 		if setup.freestanding:get() then
 			fs_active = true
 			local disablers = setup.fs_disablers:get()
@@ -5785,7 +6630,16 @@ aa_engine_run = function()
 		end
 	end
 
-	def_apply_force_defensive(last_cmd, tick, commit_config)
+	local peek_active = refs.autopeek and refs.autopeek:get()
+	aa_engine.def.gating_blocked = def_disabler_blocks(
+		fs_active,
+		setup.manual:get() ~= "Off",
+		peek_active
+	)
+	lc_apply_break_lc_overrides(me)
+	apply_defensive_runtime_overrides(config)
+
+	def_apply_force_defensive(last_cmd, tick, config)
 end
 -- ── AA.events ── Event Registration
 local aa_cm_handler = nil
@@ -5943,6 +6797,23 @@ local function resolve_antibrute_config()
 	return resolve_state_config(detect_player_state(me, last_cmd))
 end
 
+local function ab_shot_fired_at_local(shooter, impact)
+	if not shooter or not impact then return false end
+	local me = entity.get_local_player()
+	if not me or not me:is_alive() then return false end
+
+	local cam = shooter:get_eye_position()
+	local head = me:get_hitbox_position(0)
+	if not cam or not head then return false end
+
+	local closest = head:closest_ray_point(cam, impact)
+	if not closest or head:dist(closest) >= 129 then return false end
+
+	local dmg_from_impact = utils.trace_bullet(shooter, impact, head)
+	local dmg_from_closest = utils.trace_bullet(shooter, closest, head)
+	return (not (dmg_from_impact <= 0.99)) or dmg_from_closest > 0.99
+end
+
 local function trigger_anti_bruteforce(shooter)
 	if not shooter or not shooter:is_enemy() then return end
 	local config = resolve_antibrute_config()
@@ -6068,6 +6939,7 @@ EVENTS.add({ event = "render", tag = "stats.render", order = 10, fn = function()
 				dbg("prev_choke: %d", def.fire_prev_choke or 0)
 				dbg("at_fire_point: %s", (choke == 0 and (def.fire_prev_choke or 0) >= (def.last_fire_choke or 0)) and "true" or "false")
 				dbg("window_start: %s", def.window_start and "true" or "false")
+				dbg("window_fire_armed: %s", def.window_fire_armed and "true" or "false")
 				dbg("fire_reason: %s", def.fire_reason or "idle")
 				dbg("skip_reason: %s", def.skip_reason or "none")
 				dbg("dtc_air_phase: %s", def.dtc_air_phase or "ground")
@@ -6079,6 +6951,13 @@ EVENTS.add({ event = "render", tag = "stats.render", order = 10, fn = function()
 				dbg("nearest_cheat_conf: %.2f", def.nearest_conf or 0)
 				dbg("nearest_detect_source: %s", def.nearest_source or "none")
 			end
+
+			dbg("aa_state: %s", aa_engine.debug_active_state or "?")
+			dbg("delay_speed_ui: %d", aa_engine.debug_config_delay or 0)
+			dbg("effective_speed: %d", aa_engine.debug_effective_speed or 0)
+			dbg("switch_delay: %d", aa_engine.switch_delay or 0)
+			dbg("speed_options: %s", aa_engine.debug_speed_options or "?")
+			dbg("antibrute_active: %s", aa_engine.debug_antibrute_active and "true" or "false")
 
 			local shiny = aa_engine.shiny
 			if shiny then
@@ -6167,19 +7046,15 @@ EVENTS.add({ event = "bullet_impact", tag = "stats.impact", order = 10, fn = fun
 	my_center.z = my_center.z + 35
 
 	local impact = vector(e.x, e.y, e.z)
-	local shooter_pos = shooter:get_hitbox_position(0)
-	if not shooter_pos then return end
 
-	local my_eye = me:get_eye_position()
-	local shooter_eye = shooter:get_eye_position()
-	if my_eye and shooter_eye then
-		local closest_eye = my_eye:closest_ray_point(shooter_eye, impact)
-		if closest_eye and my_eye:dist(closest_eye) < 70 then
-			if is_antibrute_enabled_for_config(resolve_antibrute_config()) then
-				trigger_anti_bruteforce(shooter)
-			end
+	if ab_shot_fired_at_local(shooter, impact) then
+		if is_antibrute_enabled_for_config(resolve_antibrute_config()) then
+			trigger_anti_bruteforce(shooter)
 		end
 	end
+
+	local shooter_pos = shooter:get_hitbox_position(0)
+	if not shooter_pos then return end
 
 	local closest_head = my_pos:closest_ray_point(shooter_pos, impact)
 	local closest_center = my_center:closest_ray_point(shooter_pos, impact)
@@ -8595,49 +9470,6 @@ local function misc_on_freezetime_fakeduck(cmd)
 	if misc_refs.doubletap then misc_refs.doubletap:override(false) end
 end
 
-local function setup_break_lc_condition_enabled(name)
-	return listable_has(setup.break_lc_conditions, name)
-end
-
-local function misc_weapon_reloading(weapon)
-	if not weapon or not weapon.get_weapon_reload then return false end
-	local ok, reload = pcall(function() return weapon:get_weapon_reload() end)
-	return ok and reload ~= nil and reload ~= -1
-end
-
-local function misc_on_break_lc(me)
-	if not misc_refs.hideshot_config then return end
-	if not setup.break_lc or not setup.break_lc:get() or not me or not me:is_alive() then
-		misc_refs.hideshot_config:override()
-		return
-	end
-
-	local active = false
-	local weapon = me:get_player_weapon(false)
-
-	if setup_break_lc_condition_enabled("Weapon switch") and (me.m_flNextAttack or 0) > (globals.curtime or 0) then
-		active = true
-	end
-
-	if setup_break_lc_condition_enabled("Weapon reload") and misc_weapon_reloading(weapon) then
-		active = true
-	end
-
-	if setup_break_lc_condition_enabled("Always") then
-		local block_quickpeek = setup.break_lc_no_quickpeek and setup.break_lc_no_quickpeek:get()
-		local quickpeek_active = misc_refs.peek_assist and misc_refs.peek_assist:get()
-		if not (block_quickpeek and quickpeek_active) then
-			active = true
-		end
-	end
-
-	if active then
-		misc_refs.hideshot_config:override("Break LC")
-	else
-		misc_refs.hideshot_config:override()
-	end
-end
-
 local function misc_on_air_duck_collision(cmd, me)
 	if not misc_setup.air_duck:get() or not cmd or not me then return end
 
@@ -8987,7 +9819,7 @@ local function ia_peek_enemy_can_fire(enemy, weapon, curtime)
 	local tick = globals.tickinterval or (1 / 64)
 	if ia_peek_enemy_holding_knife(weapon) then return false end
 	if misc_is_grenade_weapon(weapon) then return false end
-	if misc_weapon_reloading(weapon) then return false end
+	if weapon_is_reloading(weapon) then return false end
 	if (enemy.m_flNextAttack or 0) > curtime then return false end
 	local next_primary = weapon.m_flNextPrimaryAttack or 0
 	if next_primary > curtime + tick then return false end
@@ -9022,7 +9854,7 @@ local function ia_peek_target_vulnerability(enemy, curtime)
 		reason = "nade"
 	end
 
-	if misc_weapon_reloading(weapon) then
+	if weapon_is_reloading(weapon) then
 		if 0.95 > score then
 			score, reason = 0.95, "reload"
 		end
@@ -10073,7 +10905,6 @@ misc_run = function(cmd)
 	misc_on_fast_ladder(cmd, me)
 	misc_on_no_fall(cmd, me)
 	misc_on_freezetime_fakeduck(cmd)
-	misc_on_break_lc(me)
 	misc_on_air_duck_collision(cmd, me)
 	misc_on_super_toss_cmd(cmd, me)
 	misc_on_nade_release(cmd, me)

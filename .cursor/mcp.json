@@ -1,36 +1,51 @@
-{
-  "mcpServers": {
-    "shinymoon-alpha-tools": {
-      "command": "powershell",
-      "args": [
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        "d:\\SteamLibrary\\steamapps\\common\\csgo legacy\\nl\\scripts\\shinymoon_1\\.cursor\\mcps\\shinymoon_alpha_tools.ps1"
-      ],
-      "env": {
-        "SHINYMOON_WORKSPACE": "d:\\SteamLibrary\\steamapps\\common\\csgo legacy\\nl\\scripts\\shinymoon_1"
-      }
-    },
-    "open-design": {
-      "command": "C:\\Users\\yeat233\\AppData\\Local\\open-design\\Open Design.exe",
-      "args": [
-        "C:\\Users\\yeat233\\AppData\\Local\\open-design\\resources\\app\\prebundled\\daemon\\daemon-cli.mjs",
-        "mcp",
-        "--daemon-url",
-        "http://127.0.0.1:7456"
-      ],
-      "type": "stdio",
-      "env": {
-        "OD_DATA_DIR": "C:\\Users\\yeat233\\AppData\\Local\\open-design\\resources\\app\\prebundled\\.od",
-        "ELECTRON_RUN_AS_NODE": "1",
-        "OD_DAEMON_URL": "http://127.0.0.1:7456"
-      }
-    },
-    "sequential-thinking": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]
-    }
-  }
+﻿{
+    "mcpServers":  {
+                       "shinymoon-alpha-tools":  {
+                                                     "command":  "powershell",
+                                                     "args":  [
+                                                                  "-NoProfile",
+                                                                  "-ExecutionPolicy",
+                                                                  "Bypass",
+                                                                  "-File",
+                                                                  "d:\\SteamLibrary\\steamapps\\common\\csgo legacy\\nl\\scripts\\shinymoon_1\\.cursor\\mcps\\shinymoon_alpha_tools.ps1"
+                                                              ],
+                                                     "env":  {
+                                                                 "SHINYMOON_WORKSPACE":  "d:\\SteamLibrary\\steamapps\\common\\csgo legacy\\nl\\scripts\\shinymoon_1"
+                                                             }
+                                                 },
+                       "open-design":  {
+                                           "command":  "C:\\Users\\yeat233\\AppData\\Local\\open-design\\Open Design.exe",
+                                           "args":  [
+                                                        "C:\\Users\\yeat233\\AppData\\Local\\open-design\\resources\\app\\prebundled\\daemon\\daemon-cli.mjs",
+                                                        "mcp",
+                                                        "--daemon-url",
+                                                        "http://127.0.0.1:7456"
+                                                    ],
+                                           "type":  "stdio",
+                                           "env":  {
+                                                       "OD_DATA_DIR":  "C:\\Users\\yeat233\\AppData\\Local\\open-design\\resources\\app\\prebundled\\.od",
+                                                       "ELECTRON_RUN_AS_NODE":  "1",
+                                                       "OD_DAEMON_URL":  "http://127.0.0.1:7456"
+                                                   }
+                                       },
+                       "sequential-thinking":  {
+                                                   "command":  "npx",
+                                                   "args":  [
+                                                                "-y",
+                                                                "@modelcontextprotocol/server-sequential-thinking"
+                                                            ]
+                                               },
+                       "ollama":  {
+                                      "command":  "C:\\Windows\\System32\\cmd.exe",
+                                      "args":  [
+                                                   "/c",
+                                                   "C:\\Program Files\\nodejs\\npx.cmd",
+                                                   "-y",
+                                                   "ollama-mcp@2.1.0"
+                                               ],
+                                      "env":  {
+                                                  "OLLAMA_HOST":  "http://127.0.0.1:11434"
+                                              }
+                                  }
+                   }
 }

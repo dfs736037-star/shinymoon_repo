@@ -23,6 +23,11 @@ Optional (after Node.js install — run `.cursor/setup/install-planning.ps1`):
 
 - `sequential-thinking` — step-by-step decomposition for complex plans
 
+Local LLM offload (Ollama installed — run `.cursor/setup/install-ollama.ps1`):
+
+- `ollama` — local chat/generate/embed via `ollama-mcp` (zero Cursor tokens for delegated tasks)
+- Guide: `.cursor/setup/OLLAMA_INTEGRATION.md`
+
 It exposes tools for:
 
 - Fetching official Neverlose CS:GO documentation pages.

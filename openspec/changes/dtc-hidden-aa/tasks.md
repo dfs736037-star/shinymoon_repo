@@ -1,6 +1,6 @@
 # Tasks: DTC Hidden AA Mirror
 
-**REVERTED** — see proposal.md.
+**REVERTED** — see proposal.md. Code aligned in shinymoon_alpha.lua (helpers + aa_engine_run branch removed).
 
 ## Group A — Helpers
 
@@ -9,10 +9,10 @@
 
 ## Group B — Wire
 
-- [x] Branch `aa_engine_run` hidden vs normal
-- [x] `def_clear_hidden_aa` in priority modes + freestanding skip
+- [x] Branch `aa_engine_run` hidden vs normal — reverted to visible-only path
+- [x] ~~`def_clear_hidden_aa` in priority modes~~ removed
 
 ## Group C — Debug + spec
 
-- [x] Debug panel hidden fields
-- [x] Update `openspec/specs/antiaim/spec.md`
+- [x] Debug panel hidden fields removed
+- [x] Main spec has no hidden-AA requirements (dtc-reliability only)

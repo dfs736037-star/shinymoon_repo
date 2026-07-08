@@ -54,6 +54,16 @@ Use subagents mainly for:
 - larger refactor planning;
 - explicit Bugbot or security reviews.
 
+## Local LLM (Ollama)
+
+Offload repetitive work to local models without spending Cursor tokens:
+
+```powershell
+.\.cursor\setup\install-ollama.ps1
+```
+
+Mini guide: `.cursor/setup/OLLAMA_INTEGRATION.md` — when to use `ollama` MCP vs Cursor cloud vs graphify.
+
 ## MCP Support
 
 The local MCP server `shinymoon-alpha-tools` complements these skills with:

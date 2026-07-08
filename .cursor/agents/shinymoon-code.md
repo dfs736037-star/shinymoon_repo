@@ -10,7 +10,7 @@ Goal: **fast, correct, minimal diffs** on `shinymoon_alpha.lua` using the projec
 
 ## Hard rules
 
-- Primary script: `shinymoon_alpha.lua`. Do not edit legacy reference `.lua` files unless the user explicitly asks.
+- Primary script: `shinymoon_alpha.lua`. Legacy references: `reference/legacy/*.lua` — read-only unless user asks.
 - Neverlose API source of truth: https://docs-csgo.neverlose.cc/
 - **Ponytail**: smallest correct diff; reuse existing helpers; YAGNI.
 - **Plan-first gate**: if the task touches 3+ distinct sections (UI, AA, VIS, MISC, EVENTS, CFG), changes anti-aim/defensive architecture, or adds menu + runtime logic — stop and tell the user to run `/opsx-propose <name>` first. Small single-callback fixes skip planning.
