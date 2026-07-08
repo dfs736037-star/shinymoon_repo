@@ -4729,6 +4729,42 @@ local function sync_desync_on_exploit_change()
 	aa_engine.last_exploit_active = exploit_active
 end
 
+-- Desync Smear: vary the hidden-yaw offset per choked command so the fake-lag
+-- backtrack trail carries a different fake angle on every record instead of one
+-- repeated angle a resolver can solve once. Stateless — indexed by choked count.
+-- ponytail: the server-side animation layer may not reproduce the fastest sweep
+-- faithfully per-tick; the pattern dropdown + amount are the tuning knobs
+-- (Ramp = safe, Alternate = aggressive). Calibrate in-game if it over/undershoots.
+local function shiny_smear_offset(base, choked, window, side, pattern)
+	base = math.max(1, math.min(180, math.abs(base or 120)))
+	if pattern == "Ramp" then
+		local denom = math.max(1, window - 1)
+		local p = choked / denom
+		if p < 0 then p = 0 elseif p > 1 then p = 1 end
+		local mag = base * (0.6 + 0.4 * p)
+		return math.max(-180, math.min(180, side * mag))
+	elseif pattern == "Walk" then
+		local mag = base * (0.6 + 0.4 * math.random())
+		local sgn = (math.random(1, 2) == 1) and 1 or -1
+		return math.max(-180, math.min(180, sgn * mag))
+	else -- "Alternate" (default)
+		local sgn = (choked % 2 == 0) and 1 or -1
+		return math.max(-180, math.min(180, sgn * base))
+	end
+end
+
+-- ponytail: no Lua interpreter in the build env; this runs at script load in-game.
+assert(shiny_smear_offset(120, 0, 5, 1, "Alternate") == 120, "smear: alternate even tick")
+assert(shiny_smear_offset(120, 1, 5, 1, "Alternate") == -120, "smear: alternate odd tick")
+assert(shiny_smear_offset(120, 0, 5, -1, "Ramp") < 0, "smear: ramp honors side")
+for _smear_c = 0, 14 do
+	for _, _smear_pat in ipairs({ "Alternate", "Ramp", "Walk" }) do
+		local _smear_v = shiny_smear_offset(120, _smear_c, 5, 1, _smear_pat)
+		assert(_smear_v ~= 0, "smear: returned 0")
+		assert(_smear_v >= -180 and _smear_v <= 180, "smear: out of range")
+	end
+end
+
 local function apply_yaw_and_desync(config, tick)
 	local me = entity.get_local_player()
 	local fake_opt = config["fake_options"] or "Jitter"
