@@ -3,37 +3,37 @@
     "schema": 1,
     "bundle_id": "shinymoon",
     "channel": "stable",
-    "security_epoch": 3,
-    "issued_at": 1784397380,
+    "security_epoch": 4,
+    "issued_at": 1784402518,
     "min_loader_version": 2,
     "role": "targets",
-    "version": 6,
-    "expires_at": 1785606980,
-    "rollback_floor": 6,
+    "version": 7,
+    "expires_at": 1785612118,
+    "rollback_floor": 7,
     "entrypoints": [
       "shinymoon"
     ],
     "modules": [
       {
         "id": "shinymoon",
-        "version": "1.0.0",
+        "version": "1.0.1",
         "owner": "dfs736037-star",
         "repo": "shinymoon_repo",
-        "commit": "946dee68c42f89222cc917ad24bc47e2c8ebc26d",
+        "commit": "6434dacb9e17293eb5fdb034bbe0ea3051e797e6",
         "path": "gamesense/modules/shinymoon.lua",
         "dependencies": [],
         "capabilities": [
           "full_env"
         ],
-        "length": 758727,
-        "sha256": "04d371d9af5a1519f87431f1733b34d71d719dbe0ecacc98a289ffcca630373a"
+        "length": 763860,
+        "sha256": "616a4040e26ee9762abc02b639f3975168750d94870842c24ea4a8067585b7d1"
       }
     ]
   },
   "signatures": [
     {
       "key_id": "targets-a",
-      "sig": "BCy1rdVYZck0wX6S1MswbcREQuNZOwnYxOlqz0XhI+79ksxTs1RhsskUkS3ZBUgUwIh0R3ZRwaucAe2HWFP2+Q=="
+      "sig": "R40iuVpP6CnGOHsQRWO50CV0YIdLTVVUsIKg+YxtnYiI78vMpCM0IK+dVa5kxyeITvT9FeCkF3RLA3j6+0Kvpw=="
     }
   ]
 }
