@@ -34,13 +34,7 @@ local SL = {
         },
     },
     crypto = {
-        ffi = nil,
-        bcrypt = nil,
-        sha_provider = nil,
-        ecdsa_provider = nil,
-        hash_object_length = nil,
-        hash_length = nil,
-        wide_cache = {},
+        bitops = nil,
         open = false,
     },
 }
@@ -71,7 +65,6 @@ local CONFIG = {
 -- SECURE_LOADER_CONFIG_END
 
 SL.constants = {
-    bcrypt_ecdsa_public_p256_magic = 0x31534345,
     sha256_abc = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
     self_test_message = "shinymoon-loader-cng-self-test-v1",
     self_test_x = "184c4e4d4a2a40fb5779f824ba11941eba73c525a74c2109712ed2687abb16c6",
@@ -113,10 +106,6 @@ function SL.set_phase(phase, detail, level)
     if detail and detail ~= "" then
         SL.log(level or "info", phase .. ": " .. SL.state.detail)
     end
-end
-
-function SL.nt_success(status)
-    return type(status) == "number" and status >= 0
 end
 
 function SL.hex_decode(value, expected_bytes)
@@ -210,163 +199,107 @@ function SL.base64_decode(value, expected_bytes)
     return decoded
 end
 
-function SL.wide(value)
-    local cached = SL.crypto.wide_cache[value]
-    if cached then
-        return cached
-    end
-    local ffi = SL.crypto.ffi
-    local wide = ffi.new("uint16_t[?]", #value + 1)
-    for index = 1, #value do
-        wide[index - 1] = value:byte(index)
-    end
-    wide[#value] = 0
-    SL.crypto.wide_cache[value] = wide
-    return wide
-end
+-- GameSense LuaJIT strips ffi.load/ffi.C, so Windows CNG is unreachable. SHA-256
+-- and ECDSA P-256 are implemented in pure Lua over the LuaJIT `bit` library.
+do
+    local ok_bit, bitlib = pcall(require, "bit")
+    local bit = (ok_bit and bitlib) or rawget(_G, "bit") or rawget(_G, "bit32")
+    SL.crypto.bitops = bit
+    local band = bit and bit.band
+    local bxor = bit and bit.bxor
+    local bor = bit and bit.bor
+    local lshift = bit and bit.lshift
+    local rshift = bit and bit.rshift
 
-function SL.crypto_close()
-    if not SL.crypto.open then
-        return
+    local function u32(x)
+        return x % 4294967296
     end
-    local bcrypt = SL.crypto.bcrypt
-    if bcrypt then
-        if SL.crypto.ecdsa_provider ~= nil then
-            pcall(bcrypt.BCryptCloseAlgorithmProvider, SL.crypto.ecdsa_provider, 0)
-        end
-        if SL.crypto.sha_provider ~= nil then
-            pcall(bcrypt.BCryptCloseAlgorithmProvider, SL.crypto.sha_provider, 0)
-        end
+    local function rotr(x, n)
+        x = u32(x)
+        return u32(bor(rshift(x, n), lshift(x, 32 - n)))
     end
-    SL.crypto.sha_provider = nil
-    SL.crypto.ecdsa_provider = nil
-    SL.crypto.hash_object_length = nil
-    SL.crypto.hash_length = nil
-    SL.crypto.open = false
-end
+    local function xor3(a, b, c)
+        return bxor(bxor(a, b), c)
+    end
 
-function SL.crypto_property_u32(handle, property_name)
-    local ffi = SL.crypto.ffi
-    local output = ffi.new("uint32_t[1]")
-    local written = ffi.new("uint32_t[1]")
-    local status = SL.crypto.bcrypt.BCryptGetProperty(
-        handle,
-        SL.wide(property_name),
-        ffi.cast("uint8_t *", output),
-        4,
-        written,
-        0
-    )
-    if not SL.nt_success(status) or tonumber(written[0]) ~= 4 then
-        return nil, "BCryptGetProperty(" .. property_name .. ") failed with status " .. tostring(status)
+    local K = {
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+        0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+        0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+        0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+        0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+        0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+        0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+    }
+
+    function SL.sha256_raw(value)
+        if not SL.crypto.bitops then
+            return nil, "bit library unavailable (LuaJIT required)"
+        end
+        if type(value) ~= "string" then
+            return nil, "SHA256 input must be a string"
+        end
+        local h0, h1, h2, h3 = 0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a
+        local h4, h5, h6, h7 = 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
+        local bitlen = #value * 8
+        local padded = value .. "\128"
+        while (#padded % 64) ~= 56 do
+            padded = padded .. "\0"
+        end
+        local hi = math.floor(bitlen / 4294967296)
+        local lo = bitlen % 4294967296
+        padded = padded .. string.char(
+            band(rshift(hi, 24), 255), band(rshift(hi, 16), 255), band(rshift(hi, 8), 255), band(hi, 255),
+            band(rshift(lo, 24), 255), band(rshift(lo, 16), 255), band(rshift(lo, 8), 255), band(lo, 255))
+        local w = {}
+        for block = 1, #padded, 64 do
+            for i = 1, 16 do
+                local j = block + (i - 1) * 4
+                w[i] = padded:byte(j) * 16777216 + padded:byte(j + 1) * 65536
+                    + padded:byte(j + 2) * 256 + padded:byte(j + 3)
+            end
+            for i = 17, 64 do
+                local a = w[i - 15]
+                local b = w[i - 2]
+                local s0 = xor3(rotr(a, 7), rotr(a, 18), rshift(a, 3))
+                local s1 = xor3(rotr(b, 17), rotr(b, 19), rshift(b, 10))
+                w[i] = u32(w[i - 16] + s0 + w[i - 7] + s1)
+            end
+            local a, b, c, d = h0, h1, h2, h3
+            local e, f, g, h = h4, h5, h6, h7
+            for i = 1, 64 do
+                local s1 = xor3(rotr(e, 6), rotr(e, 11), rotr(e, 25))
+                local ch = bxor(band(e, f), band(u32(-e - 1), g))
+                local t1 = u32(h + s1 + ch + K[i] + w[i])
+                local s0 = xor3(rotr(a, 2), rotr(a, 13), rotr(a, 22))
+                local maj = xor3(band(a, b), band(a, c), band(b, c))
+                local t2 = u32(s0 + maj)
+                h = g; g = f; f = e; e = u32(d + t1)
+                d = c; c = b; b = a; a = u32(t1 + t2)
+            end
+            h0 = u32(h0 + a); h1 = u32(h1 + b); h2 = u32(h2 + c); h3 = u32(h3 + d)
+            h4 = u32(h4 + e); h5 = u32(h5 + f); h6 = u32(h6 + g); h7 = u32(h7 + h)
+        end
+        local function word(x)
+            return string.char(band(rshift(x, 24), 255), band(rshift(x, 16), 255),
+                band(rshift(x, 8), 255), band(x, 255))
+        end
+        return word(h0) .. word(h1) .. word(h2) .. word(h3)
+            .. word(h4) .. word(h5) .. word(h6) .. word(h7)
     end
-    return tonumber(output[0])
 end
 
 function SL.crypto_open()
-    if SL.crypto.open then
-        return true
+    if not SL.crypto.bitops then
+        return nil, "bit library unavailable (LuaJIT with the bit library is required)"
     end
-    local ok_ffi, ffi_or_error = pcall(require, "ffi")
-    if not ok_ffi then
-        return nil, "ffi unavailable (unsafe scripts are required): " .. SL.safe_text(ffi_or_error)
-    end
-    SL.crypto.ffi = ffi_or_error
-    local ffi = SL.crypto.ffi
-    local ok_cdef, cdef_error = pcall(ffi.cdef, [[
-        int32_t __stdcall BCryptOpenAlgorithmProvider(void **phAlgorithm, const uint16_t *pszAlgId, const uint16_t *pszImplementation, uint32_t dwFlags);
-        int32_t __stdcall BCryptCloseAlgorithmProvider(void *hAlgorithm, uint32_t dwFlags);
-        int32_t __stdcall BCryptGetProperty(void *hObject, const uint16_t *pszProperty, uint8_t *pbOutput, uint32_t cbOutput, uint32_t *pcbResult, uint32_t dwFlags);
-        int32_t __stdcall BCryptCreateHash(void *hAlgorithm, void **phHash, uint8_t *pbHashObject, uint32_t cbHashObject, uint8_t *pbSecret, uint32_t cbSecret, uint32_t dwFlags);
-        int32_t __stdcall BCryptHashData(void *hHash, uint8_t *pbInput, uint32_t cbInput, uint32_t dwFlags);
-        int32_t __stdcall BCryptFinishHash(void *hHash, uint8_t *pbOutput, uint32_t cbOutput, uint32_t dwFlags);
-        int32_t __stdcall BCryptDestroyHash(void *hHash);
-        int32_t __stdcall BCryptImportKeyPair(void *hAlgorithm, void *hImportKey, const uint16_t *pszBlobType, void **phKey, uint8_t *pbInput, uint32_t cbInput, uint32_t dwFlags);
-        int32_t __stdcall BCryptVerifySignature(void *hKey, void *pPaddingInfo, uint8_t *pbHash, uint32_t cbHash, uint8_t *pbSignature, uint32_t cbSignature, uint32_t dwFlags);
-        int32_t __stdcall BCryptDestroyKey(void *hKey);
-    ]])
-    if not ok_cdef then
-        return nil, "bcrypt FFI declarations failed: " .. SL.safe_text(cdef_error)
-    end
-    local ok_load, bcrypt_or_error = pcall(ffi.load, "bcrypt")
-    if not ok_load then
-        ok_load, bcrypt_or_error = pcall(ffi.load, "bcrypt.dll")
-    end
-    if not ok_load then
-        return nil, "bcrypt.dll unavailable: " .. SL.safe_text(bcrypt_or_error)
-    end
-    SL.crypto.bcrypt = bcrypt_or_error
-    local sha_handle = ffi.new("void *[1]")
-    local status = SL.crypto.bcrypt.BCryptOpenAlgorithmProvider(sha_handle, SL.wide("SHA256"), nil, 0)
-    if not SL.nt_success(status) or sha_handle[0] == nil then
-        return nil, "opening SHA256 provider failed with status " .. tostring(status)
-    end
-    SL.crypto.sha_provider = sha_handle[0]
-    local ecdsa_handle = ffi.new("void *[1]")
-    status = SL.crypto.bcrypt.BCryptOpenAlgorithmProvider(ecdsa_handle, SL.wide("ECDSA_P256"), nil, 0)
-    if not SL.nt_success(status) or ecdsa_handle[0] == nil then
-        SL.crypto.open = true
-        SL.crypto_close()
-        return nil, "opening ECDSA_P256 provider failed with status " .. tostring(status)
-    end
-    SL.crypto.ecdsa_provider = ecdsa_handle[0]
     SL.crypto.open = true
-    local object_length, object_error = SL.crypto_property_u32(SL.crypto.sha_provider, "ObjectLength")
-    if not object_length or object_length < 1 or object_length > 1024 * 1024 then
-        SL.crypto_close()
-        return nil, object_error or "SHA256 object length is unsafe"
-    end
-    local hash_length, hash_error = SL.crypto_property_u32(SL.crypto.sha_provider, "HashDigestLength")
-    if hash_length ~= 32 then
-        SL.crypto_close()
-        return nil, hash_error or "SHA256 digest length is not 32"
-    end
-    SL.crypto.hash_object_length = object_length
-    SL.crypto.hash_length = hash_length
     return true
 end
 
-function SL.sha256_raw(value)
-    if not SL.crypto.open then
-        return nil, "crypto provider is closed"
-    end
-    if type(value) ~= "string" then
-        return nil, "SHA256 input must be a string"
-    end
-    local ffi = SL.crypto.ffi
-    local object = ffi.new("uint8_t[?]", SL.crypto.hash_object_length)
-    local hash_handle = ffi.new("void *[1]")
-    local status = SL.crypto.bcrypt.BCryptCreateHash(
-        SL.crypto.sha_provider,
-        hash_handle,
-        object,
-        SL.crypto.hash_object_length,
-        nil,
-        0,
-        0
-    )
-    if not SL.nt_success(status) or hash_handle[0] == nil then
-        return nil, "BCryptCreateHash failed with status " .. tostring(status)
-    end
-    local input = ffi.new("uint8_t[?]", math.max(1, #value))
-    if #value > 0 then
-        ffi.copy(input, value, #value)
-    end
-    status = SL.crypto.bcrypt.BCryptHashData(hash_handle[0], input, #value, 0)
-    if not SL.nt_success(status) then
-        pcall(SL.crypto.bcrypt.BCryptDestroyHash, hash_handle[0])
-        return nil, "BCryptHashData failed with status " .. tostring(status)
-    end
-    local digest = ffi.new("uint8_t[32]")
-    status = SL.crypto.bcrypt.BCryptFinishHash(hash_handle[0], digest, 32, 0)
-    local destroy_status = SL.crypto.bcrypt.BCryptDestroyHash(hash_handle[0])
-    if not SL.nt_success(status) then
-        return nil, "BCryptFinishHash failed with status " .. tostring(status)
-    end
-    if not SL.nt_success(destroy_status) then
-        return nil, "BCryptDestroyHash failed with status " .. tostring(destroy_status)
-    end
-    return ffi.string(digest, 32)
+function SL.crypto_close()
+    SL.crypto.open = false
 end
 
 function SL.sha256_hex(value)
@@ -377,69 +310,257 @@ function SL.sha256_hex(value)
     return SL.hex_encode(raw)
 end
 
-function SL.import_public_key(x_hex, y_hex)
-    local x, x_error = SL.hex_decode(x_hex, 32)
-    if not x then
-        return nil, "public x: " .. x_error
-    end
-    local y, y_error = SL.hex_decode(y_hex, 32)
-    if not y then
-        return nil, "public y: " .. y_error
-    end
-    local ffi = SL.crypto.ffi
-    local blob = ffi.new("uint8_t[72]")
-    local blob_pointer = ffi.cast("uint8_t *", blob)
-    local header = ffi.cast("uint32_t *", blob_pointer)
-    header[0] = SL.constants.bcrypt_ecdsa_public_p256_magic
-    header[1] = 32
-    ffi.copy(blob_pointer + 8, x, 32)
-    ffi.copy(blob_pointer + 40, y, 32)
-    local key_handle = ffi.new("void *[1]")
-    local status = SL.crypto.bcrypt.BCryptImportKeyPair(
-        SL.crypto.ecdsa_provider,
-        nil,
-        SL.wide("ECCPUBLICBLOB"),
-        key_handle,
-        blob,
-        72,
-        0
-    )
-    if not SL.nt_success(status) or key_handle[0] == nil then
-        return nil, "BCryptImportKeyPair failed with status " .. tostring(status)
-    end
-    return key_handle[0]
-end
+-- ECDSA P-256 verification over pure-Lua big integers (base 2^24 limbs).
+-- ponytail: bn_mod is bit-at-a-time long division. Correct but not fast; each
+-- verify is a few thousand mulmods. Runs a handful of times at load, so the
+-- cost is acceptable. Upgrade path if latency bites: NIST P-256 Solinas
+-- fast-reduction to replace the general division in the mod-p hot path.
+do
+    local BASE = 16777216 -- 2^24
+    local floor = math.floor
 
-function SL.verify_p256(message, signature_base64, x_hex, y_hex)
-    if type(message) ~= "string" then
-        return nil, "signature message must be a string"
+    local function bn_norm(a)
+        local n = #a
+        while n > 1 and a[n] == 0 do a[n] = nil; n = n - 1 end
+        return a
     end
-    local signature, signature_error = SL.base64_decode(signature_base64, 64)
-    if not signature then
-        return nil, signature_error
+    local function bn_copy(a)
+        local r = {}
+        for i = 1, #a do r[i] = a[i] end
+        return r
     end
-    local hash, hash_error = SL.sha256_raw(message)
-    if not hash then
-        return nil, hash_error
+    local function bn_zero() return { 0 } end
+    local function bn_is_zero(a) return #a == 1 and a[1] == 0 end
+    local function bn_from_int(x)
+        if x == 0 then return { 0 } end
+        local r = {}
+        while x > 0 do r[#r + 1] = x % BASE; x = floor(x / BASE) end
+        return r
     end
-    local key, key_error = SL.import_public_key(x_hex, y_hex)
-    if not key then
-        return nil, key_error
+    local ONE = bn_from_int(1)
+    local TWO = bn_from_int(2)
+    local C256 = bn_from_int(256)
+    local C3 = bn_from_int(3)
+    local C4 = bn_from_int(4)
+    local C8 = bn_from_int(8)
+
+    local function bn_cmp(a, b)
+        if #a ~= #b then return #a < #b and -1 or 1 end
+        for i = #a, 1, -1 do
+            if a[i] ~= b[i] then return a[i] < b[i] and -1 or 1 end
+        end
+        return 0
     end
-    local ffi = SL.crypto.ffi
-    local hash_buffer = ffi.new("uint8_t[32]")
-    local signature_buffer = ffi.new("uint8_t[64]")
-    ffi.copy(hash_buffer, hash, 32)
-    ffi.copy(signature_buffer, signature, 64)
-    local status = SL.crypto.bcrypt.BCryptVerifySignature(key, nil, hash_buffer, 32, signature_buffer, 64, 0)
-    local destroy_status = SL.crypto.bcrypt.BCryptDestroyKey(key)
-    if not SL.nt_success(destroy_status) then
-        return nil, "BCryptDestroyKey failed with status " .. tostring(destroy_status)
+    local function bn_add(a, b)
+        local r = {}
+        local carry = 0
+        local n = #a > #b and #a or #b
+        for i = 1, n do
+            local s = (a[i] or 0) + (b[i] or 0) + carry
+            if s >= BASE then r[i] = s - BASE; carry = 1 else r[i] = s; carry = 0 end
+        end
+        if carry > 0 then r[n + 1] = carry end
+        return r
     end
-    if status == 0 then
-        return true
+    local function bn_sub(a, b) -- assumes a >= b
+        local r = {}
+        local borrow = 0
+        for i = 1, #a do
+            local s = a[i] - (b[i] or 0) - borrow
+            if s < 0 then r[i] = s + BASE; borrow = 1 else r[i] = s; borrow = 0 end
+        end
+        return bn_norm(r)
     end
-    return false, "signature rejected with status " .. tostring(status)
+    local function bn_shl1(a)
+        local r = {}
+        local carry = 0
+        for i = 1, #a do
+            local s = a[i] * 2 + carry
+            if s >= BASE then r[i] = s - BASE; carry = 1 else r[i] = s; carry = 0 end
+        end
+        if carry > 0 then r[#a + 1] = carry end
+        return r
+    end
+    local function bn_mul(a, b)
+        local r = {}
+        for i = 1, #a + #b do r[i] = 0 end
+        for i = 1, #a do
+            local carry = 0
+            local ai = a[i]
+            for j = 1, #b do
+                local idx = i + j - 1
+                local s = r[idx] + ai * b[j] + carry
+                carry = floor(s / BASE)
+                r[idx] = s - carry * BASE
+            end
+            r[i + #b] = r[i + #b] + carry
+        end
+        return bn_norm(r)
+    end
+    local function bn_bitlen(a)
+        local top = a[#a]
+        local bits = (#a - 1) * 24
+        while top > 0 do bits = bits + 1; top = floor(top / 2) end
+        return bits
+    end
+    local function bn_testbit(a, i)
+        local limb = floor(i / 24) + 1
+        if limb > #a then return 0 end
+        return floor(a[limb] / 2 ^ (i % 24)) % 2
+    end
+    local function bn_mod(a, m)
+        if bn_cmp(a, m) < 0 then return bn_copy(a) end
+        local r = bn_zero()
+        for i = bn_bitlen(a) - 1, 0, -1 do
+            r = bn_shl1(r)
+            if bn_testbit(a, i) == 1 then r[1] = r[1] + 1 end
+            if bn_cmp(r, m) >= 0 then r = bn_sub(r, m) end
+        end
+        return bn_norm(r)
+    end
+    local function bn_mulmod(a, b, m) return bn_mod(bn_mul(a, b), m) end
+    local function bn_addmod(a, b, m)
+        local s = bn_add(a, b)
+        if bn_cmp(s, m) >= 0 then s = bn_sub(s, m) end
+        return s
+    end
+    local function bn_submod(a, b, m)
+        if bn_cmp(a, b) >= 0 then return bn_sub(a, b) end
+        return bn_sub(bn_add(a, m), b)
+    end
+    local function bn_modpow(base, e, m)
+        local result = bn_from_int(1)
+        base = bn_mod(base, m)
+        for i = 0, bn_bitlen(e) - 1 do
+            if bn_testbit(e, i) == 1 then result = bn_mulmod(result, base, m) end
+            base = bn_mulmod(base, base, m)
+        end
+        return result
+    end
+    local function bn_invmod(a, m) return bn_modpow(a, bn_sub(m, TWO), m) end
+    local function bn_from_bytes(s)
+        local r = bn_zero()
+        for i = 1, #s do
+            r = bn_add(bn_mul(r, C256), bn_from_int(s:byte(i)))
+        end
+        return bn_norm(r)
+    end
+    local HEXVAL = {}
+    for i = 0, 9 do HEXVAL[string.char(48 + i)] = i end
+    for i = 0, 5 do HEXVAL[string.char(97 + i)] = 10 + i end
+    local function bn_from_hex(h)
+        if type(h) ~= "string" or #h % 2 ~= 0 then return nil end
+        local bytes = {}
+        for i = 1, #h, 2 do
+            local a = HEXVAL[h:sub(i, i)]
+            local b = HEXVAL[h:sub(i + 1, i + 1)]
+            if not a or not b then return nil end
+            bytes[#bytes + 1] = string.char(a * 16 + b)
+        end
+        return bn_from_bytes(table.concat(bytes))
+    end
+
+    local P = bn_from_hex("ffffffff00000001000000000000000000000000ffffffffffffffffffffffff")
+    local N = bn_from_hex("ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551")
+    local Bcurve = bn_from_hex("5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b")
+    local GX = bn_from_hex("6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296")
+    local GY = bn_from_hex("4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5")
+
+    local function fadd(a, b) return bn_addmod(a, b, P) end
+    local function fsub(a, b) return bn_submod(a, b, P) end
+    local function fmul(a, b) return bn_mulmod(a, b, P) end
+    local INFINITY = { X = ONE, Y = ONE, Z = bn_zero() }
+
+    local function jac_double(pt)
+        if bn_is_zero(pt.Z) then return pt end
+        local X, Y, Z = pt.X, pt.Y, pt.Z
+        local A = fmul(Y, Y)
+        local Bc = fmul(fmul(C4, X), A)
+        local C = fmul(fmul(C8, A), A)
+        local Z2 = fmul(Z, Z)
+        local D = fmul(C3, fmul(fsub(X, Z2), fadd(X, Z2)))
+        local X3 = fsub(fmul(D, D), fadd(Bc, Bc))
+        local Y3 = fsub(fmul(D, fsub(Bc, X3)), C)
+        local Z3 = fmul(fmul(TWO, Y), Z)
+        return { X = X3, Y = Y3, Z = Z3 }
+    end
+    local function jac_add(p1, p2)
+        if bn_is_zero(p1.Z) then return p2 end
+        if bn_is_zero(p2.Z) then return p1 end
+        local X1, Y1, Z1 = p1.X, p1.Y, p1.Z
+        local X2, Y2, Z2 = p2.X, p2.Y, p2.Z
+        local Z1Z1 = fmul(Z1, Z1)
+        local Z2Z2 = fmul(Z2, Z2)
+        local U1 = fmul(X1, Z2Z2)
+        local U2 = fmul(X2, Z1Z1)
+        local S1 = fmul(Y1, fmul(Z2, Z2Z2))
+        local S2 = fmul(Y2, fmul(Z1, Z1Z1))
+        if bn_cmp(U1, U2) == 0 then
+            if bn_cmp(S1, S2) ~= 0 then return INFINITY end
+            return jac_double(p1)
+        end
+        local H = fsub(U2, U1)
+        local R = fsub(S2, S1)
+        local HH = fmul(H, H)
+        local HHH = fmul(H, HH)
+        local U1HH = fmul(U1, HH)
+        local X3 = fsub(fsub(fmul(R, R), HHH), fadd(U1HH, U1HH))
+        local Y3 = fsub(fmul(R, fsub(U1HH, X3)), fmul(S1, HHH))
+        local Z3 = fmul(fmul(Z1, Z2), H)
+        return { X = X3, Y = Y3, Z = Z3 }
+    end
+    local function jac_mul(k, pt)
+        local result = INFINITY
+        for i = bn_bitlen(k) - 1, 0, -1 do
+            result = jac_double(result)
+            if bn_testbit(k, i) == 1 then result = jac_add(result, pt) end
+        end
+        return result
+    end
+    local function on_curve(x, y)
+        local left = fmul(y, y)
+        local right = fadd(fsub(fmul(fmul(x, x), x), fmul(C3, x)), Bcurve)
+        return bn_cmp(left, right) == 0
+    end
+
+    -- message: bytes to hash; signature_base64: P1363 r||s; x_hex/y_hex: public key.
+    function SL.verify_p256(message, signature_base64, x_hex, y_hex)
+        if type(message) ~= "string" then
+            return nil, "signature message must be a string"
+        end
+        local signature, signature_error = SL.base64_decode(signature_base64, 64)
+        if not signature then
+            return nil, signature_error
+        end
+        local qx = bn_from_hex(x_hex)
+        local qy = bn_from_hex(y_hex)
+        if not qx or not qy then
+            return nil, "public key hex is malformed"
+        end
+        local hash, hash_error = SL.sha256_raw(message)
+        if not hash then
+            return nil, hash_error
+        end
+        local r = bn_from_bytes(signature:sub(1, 32))
+        local s = bn_from_bytes(signature:sub(33, 64))
+        if bn_is_zero(r) or bn_cmp(r, N) >= 0 then return false, "signature r out of range" end
+        if bn_is_zero(s) or bn_cmp(s, N) >= 0 then return false, "signature s out of range" end
+        if bn_cmp(qx, P) >= 0 or bn_cmp(qy, P) >= 0 then return nil, "public key coordinate out of range" end
+        if not on_curve(qx, qy) then return nil, "public key is not on the curve" end
+        local e = bn_mod(bn_from_bytes(hash), N)
+        local w = bn_invmod(s, N)
+        local u1 = bn_mulmod(e, w, N)
+        local u2 = bn_mulmod(r, w, N)
+        local point = jac_add(jac_mul(u1, { X = GX, Y = GY, Z = ONE }),
+            jac_mul(u2, { X = qx, Y = qy, Z = ONE }))
+        if bn_is_zero(point.Z) then return false, "signature reduces to point at infinity" end
+        local zinv = bn_invmod(point.Z, P)
+        local x = fmul(point.X, fmul(zinv, zinv))
+        if bn_cmp(bn_mod(x, N), r) == 0 then
+            return true
+        end
+        return false, "signature does not verify"
+    end
 end
 
 function SL.crypto_self_test()
