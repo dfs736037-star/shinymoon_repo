@@ -4,11 +4,11 @@
     "bundle_id": "shinymoon",
     "channel": "stable",
     "security_epoch": 4,
-    "issued_at": 1784402518,
+    "issued_at": 1784409293,
     "min_loader_version": 2,
     "role": "targets",
-    "version": 7,
-    "expires_at": 1785612118,
+    "version": 8,
+    "expires_at": 1785618893,
     "rollback_floor": 7,
     "entrypoints": [
       "shinymoon"
@@ -16,24 +16,24 @@
     "modules": [
       {
         "id": "shinymoon",
-        "version": "1.0.1",
+        "version": "1.0.2",
         "owner": "dfs736037-star",
         "repo": "shinymoon_repo",
-        "commit": "6434dacb9e17293eb5fdb034bbe0ea3051e797e6",
+        "commit": "1852aeae30834fb25c1f72cd9c42250f6ffec7ae",
         "path": "gamesense/modules/shinymoon.lua",
         "dependencies": [],
         "capabilities": [
           "full_env"
         ],
-        "length": 763860,
-        "sha256": "616a4040e26ee9762abc02b639f3975168750d94870842c24ea4a8067585b7d1"
+        "length": 769568,
+        "sha256": "404ad07dd4736ee248a19dc891e10b38319d0a9faba94cbd45da0c23612050d0"
       }
     ]
   },
   "signatures": [
     {
       "key_id": "targets-a",
-      "sig": "R40iuVpP6CnGOHsQRWO50CV0YIdLTVVUsIKg+YxtnYiI78vMpCM0IK+dVa5kxyeITvT9FeCkF3RLA3j6+0Kvpw=="
+      "sig": "QCuIwje3L6FO15obZegUc2Hvn/rUbS/Yv6Hm90XMpvCnqzzvcJiX7ihX/A16wEaH+dlxvTkRSCn3+WPx9uXoAg=="
     }
   ]
 }

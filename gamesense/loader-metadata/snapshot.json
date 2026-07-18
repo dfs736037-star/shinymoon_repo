@@ -4,21 +4,21 @@
     "bundle_id": "shinymoon",
     "channel": "stable",
     "security_epoch": 4,
-    "issued_at": 1784402518,
+    "issued_at": 1784409293,
     "min_loader_version": 2,
     "role": "snapshot",
-    "version": 7,
-    "expires_at": 1785007318,
+    "version": 8,
+    "expires_at": 1785014093,
     "targets": {
-      "version": 7,
+      "version": 8,
       "length": 960,
-      "sha256": "d63477f9148b147e9e9bcfc79970a90d947a30297c50b2ced870eefbef4b6d87"
+      "sha256": "ef0de25c75798a50a6ff4b3a9523e85a77b63ebba02f0dc9e7235484cd6c935d"
     }
   },
   "signatures": [
     {
       "key_id": "snapshot-a",
-      "sig": "CDhQe2xdCwVnSmY3XMtwaUHZwKjEGlagiisrSLeijOlnamySf1vnKQMK9Fs6NoOIjoJLG/HUI13Q/APBe+imfA=="
+      "sig": "hzR1oiXhx+7s9x4+7CLSdRcYosjjsgwRYwGkIsdN/cMUh8yvhdd+FCHbQUFc4EnFmKx4F2109Ie60QZtP8okUw=="
     }
   ]
 }
