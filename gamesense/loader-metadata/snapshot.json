@@ -3,22 +3,22 @@
     "schema": 1,
     "bundle_id": "shinymoon",
     "channel": "stable",
-    "security_epoch": 1,
-    "issued_at": 1784343365,
-    "min_loader_version": 1,
+    "security_epoch": 2,
+    "issued_at": 1784365975,
+    "min_loader_version": 2,
     "role": "snapshot",
-    "version": 1,
-    "expires_at": 1784948165,
+    "version": 2,
+    "expires_at": 1784970775,
     "targets": {
-      "version": 1,
+      "version": 2,
       "length": 960,
-      "sha256": "e0ebcfcb70eb5c6452ed3f6901f34907b6c9c7c3126010adbcd17af4deda19af"
+      "sha256": "48c6eb44bf57ddf2499a6189b9303db703b265d547dd278a5cd7a3c11f1a56d8"
     }
   },
   "signatures": [
     {
       "key_id": "snapshot-a",
-      "sig": "ubQGr2FjJxpbyEgAWQuo3IdByucCA1k1fFQH/ZXg0cFtD7q8qfb7lw5xeae3IFQ8RDv/UF5FkPN1TQPwnXtt7Q=="
+      "sig": "Yhu2/kP/RA2+I50mSzzeE3opzuS9yZ1UBedmBAIWDCzDGLpgIW/BfJS0eNaxQWj9pcqbxKAORgHRPWxfsFOaTA=="
     }
   ]
 }
