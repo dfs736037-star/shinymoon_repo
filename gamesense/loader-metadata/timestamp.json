@@ -1,0 +1,24 @@
+{
+  "signed": {
+    "schema": 1,
+    "bundle_id": "shinymoon",
+    "channel": "stable",
+    "security_epoch": 1,
+    "issued_at": 1784343365,
+    "min_loader_version": 1,
+    "role": "timestamp",
+    "version": 1,
+    "expires_at": 1784364965,
+    "snapshot": {
+      "version": 1,
+      "length": 565,
+      "sha256": "660b3a18920e98db7e1bd60922528d537bcf77de4c21e1bd7843356ab85d1f84"
+    }
+  },
+  "signatures": [
+    {
+      "key_id": "timestamp-a",
+      "sig": "vj0rd6/tw6VCXyau8aAZWJZO6d4iuSdKJSmbHyJ03rQM9cnKGPAK7Di4IofU6r++H4TdLSXjofqrPjlgpbS5rA=="
+    }
+  ]
+}
